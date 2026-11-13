@@ -1,7 +1,7 @@
-.profile/
-.env
-data/
-app/data/
+/.profile/
+/.env
+/data/
+/app/data/
 __pycache__/
 *.log
-logs/
+/logs/
