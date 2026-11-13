@@ -25,6 +25,17 @@ def find(prefix):
     return hits[0]
 
 
+# self-heal: resolve any shortened slug in the list to the full one
+_changed = False
+for _e in exp["posts"]:
+    if _e["slug"] not in by_slug:
+        _hits = [s for s in by_slug if s.startswith(_e["slug"])]
+        if len(_hits) == 1:
+            _e["slug"] = _hits[0]; _changed = True
+if _changed:
+    F.write_text(json.dumps(exp, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
 def save():
     F.write_text(json.dumps(exp, ensure_ascii=False, indent=1), encoding="utf-8")
 
