@@ -121,7 +121,7 @@ async function boot() {
 
 function render() {
   const C = D.counts;
-  document.getElementById('stamp').textContent = 'built ' + D.generated.replace('T', ' ').slice(0, 16);
+  const age = Math.round((Date.now() - new Date(D.generated)) / 60000); document.getElementById('stamp').textContent = 'pulled ' + (age < 60 ? age + ' min ago' : Math.round(age / 60) + ' h ago') + ' · refreshes hourly';
   const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', 0], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]];
   document.getElementById('nav').innerHTML = tabs.map(([k, l, n]) => `<button data-v="${k}" class="${view === k ? 'on' : ''}">${l}${n ? `<b>${n}</b>` : ''}</button>`).join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { view = b.dataset.v; ls('view', view); render(); });
@@ -168,7 +168,7 @@ function wire(m, items, renderFn) {
 
 function today(m) {
   const items = D.posts.filter(p => p.isNew || p.newComments);
-  m.innerHTML = `<div class="tiles"><div class="tile"><div class="v">${D.counts.new}</div><div class="l">new posts since last pull</div></div><div class="tile"><div class="v">${items.filter(p => p.newComments).length}</div><div class="l">posts with new comments</div></div><div class="tile"><div class="v">${D.counts.queue}</div><div class="l">drafts waiting</div></div><div class="tile"><div class="v">${D.counts.myNewComments}</div><div class="l">new comments on my threads</div></div></div>` + listBar(m, 'Since the last pull');
+  m.innerHTML = `<div class="tiles"><div class="tile"><div class="v">${D.counts.new}</div><div class="l">new posts, last 24 hours</div></div><div class="tile"><div class="v">${items.filter(p => p.newComments).length}</div><div class="l">posts with new comments</div></div><div class="tile"><div class="v">${D.counts.queue}</div><div class="l">drafts waiting</div></div><div class="tile"><div class="v">${D.counts.myNewComments}</div><div class="l">new comments on my threads</div></div></div>` + listBar(m, 'Last 24 hours');
   wire(m, items, postCard);
 }
 function queue(m) {

@@ -60,7 +60,7 @@ for pid, p in live.items():
 last_run = iso(state.get("last_run")) if state.get("last_run") else None
 runs = state.get("runs", [])
 prev_run = iso(runs[-2]["finished"]) if len(runs) >= 2 else (now - dt.timedelta(days=1))
-new_since = prev_run or (now - dt.timedelta(days=1))
+new_since = now - dt.timedelta(hours=24)   # "today" = the last 24 hours, whatever the pull cadence
 
 # comments by post, and my activity
 cby = collections.defaultdict(list)
