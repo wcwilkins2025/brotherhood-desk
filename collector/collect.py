@@ -151,6 +151,7 @@ def main():
     ap.add_argument("--pages", type=int, default=0, help="force this many feed pages (backfill)")
     ap.add_argument("--max-detail", type=int, default=80, help="max post pages to open for comments")
     ap.add_argument("--headed", action="store_true")
+    ap.add_argument("--recomment", action="store_true", help="pull comments for posts that have none captured yet (no feed walk)")
     args = ap.parse_args()
 
     state = load(DATA / "state.json", {})
@@ -197,7 +198,7 @@ def main():
 
         # --- feed pages ---
         touched = []          # post ids seen this run that need a detail fetch
-        max_pages = args.pages or 40
+        max_pages = 0 if args.recomment else (args.pages or 40)
         pg = 1
         while pg <= max_pages:
             if pg > 1:
@@ -236,18 +237,43 @@ def main():
 
         # --- comments via the API the site uses (first 25 + newest 25, with reply threads) ---
         group_id = dig(nd, "props", "pageProps", "currentGroup", "id") or GROUP_ID
+        if args.recomment:
+            have = {c["postId"] for c in comments.values()}
+            touched = [i for i, p in posts.items() if p.get("comments", 0) > 0 and i not in have]
         ordered = sorted(dict.fromkeys(touched), key=lambda i: posts[i].get("lastCommentAt") or posts[i].get("createdAt") or "", reverse=True)
         ordered = [i for i in ordered if posts[i].get("comments", 0) > 0][: args.max_detail]
+
+        def warm(pid):
+            """Visit a post page so the site's firewall token is fresh for API calls."""
+            slug = posts[pid].get("slug")
+            try:
+                page.goto(f"{BASE}/{slug}" if slug else BASE, wait_until="domcontentloaded", timeout=60000)
+            except PWTimeout:
+                pass
+            time.sleep(5)
+
+        if ordered:
+            warm(ordered[0])
+        calls = 0; fails = 0
         for n_done, pid in enumerate(ordered):
+            if calls and calls % 40 == 0:
+                warm(pid)
             flat = []
             for extra in ("", "&tail=true"):
                 url = f"https://api2.skool.com/posts/{pid}/comments?group-id={group_id}&limit=25{extra}"
-                try:
-                    r = page.request.get(url, timeout=30000)
-                    if not r.ok:
-                        continue
-                    tree = r.json().get("post_tree", {})
-                except Exception:
+                tree = None
+                for attempt in range(2):
+                    try:
+                        r = page.request.get(url, timeout=30000); calls += 1
+                        if r.ok:
+                            tree = r.json().get("post_tree", {}); fails = 0; break
+                        log.setdefault("api_errors", 0); log["api_errors"] += 1; fails += 1
+                        time.sleep(10); warm(pid)
+                    except Exception:
+                        break
+                if fails >= 6:
+                    print("comments API keeps refusing; stopping comment pull for this run"); break
+                if tree is None:
                     continue
                 if n_done == 0 and extra == "":
                     save(rawdir / "comments_api_sample.json", tree)
@@ -261,7 +287,9 @@ def main():
                     log["new_comments"] += 1
                 elif c["id"]:
                     comments[c["id"]]["upvotes"] = c["upvotes"]
-            time.sleep(0.4)
+            if fails >= 6:
+                break
+            time.sleep(1.2)
         log["detail_posts"] = len(ordered)
 
         # --- leaderboard ---

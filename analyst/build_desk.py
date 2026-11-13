@@ -64,7 +64,7 @@ for pid, p in posts.items():
     created = iso(p.get("createdAt"))
     lastc = iso(p.get("lastCommentAt")) if p.get("lastCommentAt") else created
     cl = sorted(cby.get(pid, []), key=lambda c: c.get("createdAt") or "")
-    new_c = [c for c in cl if iso(c.get("firstSeen") or c.get("createdAt")) and iso(c.get("firstSeen") or c.get("createdAt")) >= new_since]
+    new_c = [c for c in cl if iso(c.get("createdAt")) and iso(c.get("createdAt")) >= new_since and c.get("author") != ME]
     d = drafts.get(pid, {})
     mine = pid in my_post_ids or pid in my_commented
     out_posts.append({
