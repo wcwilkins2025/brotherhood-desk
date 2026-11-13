@@ -4,11 +4,11 @@ A private daily desk for one member of The Brotherhood (Skool). Each morning a l
 
 ## Pieces
 - `collector/collect.py`: Playwright with a saved login profile. Feed pages, comments (first 25 and newest 25 per post), leaderboard, daily count snapshots.
-- `analyst/analyze.py`: Claude Code headless. Forum labels, reply scores, drafts in the owner's voice (`analyst/voice.md`).
+- `analyst/analyze.py`: Claude Code headless, signed in with `CLAUDE_CODE_OAUTH_TOKEN` from `.env` (make one with `claude setup-token`). Forum labels, reply scores, drafts in the owner's voice (`analyst/voice.md`). Each draft is linted against the voice rules; anything off shows as a "Check before pasting" line on the card.
 - `analyst/build_desk.py`: merges everything into `data/desk.json`.
 - `publish.py`: AES-GCM encrypts `desk.json` with `DESK_PASSPHRASE` from `.env`, copies the app to `docs/`, commits and pushes.
-- `run_daily.bat`: the 6 a.m. scheduled task.
-- `app/index.html`: the page. Tabs: Today, Reply queue, My threads, Forums, Members (posting trend), Leaderboards, Charts, Experiment.
+- `run_daily.bat`: run by two Task Scheduler tasks, "Brotherhood Desk daily" (6 a.m.) and "Brotherhood Desk hourly". A lock file in `logs/` stops overlapping runs; a lock older than 90 minutes is treated as a crash and cleared.
+- `app/index.html`: the page. Tabs: Today, Reply queue, My threads, Forums, Members (posting trend), Leaderboards (Skool's 7-day, 30-day and all-time boards with the owner's rank, plus boards computed from posts), Charts, Experiment.
 
 ## Not in git
 `.profile/` (browser login), `.env` (passphrase, token), `data/` (member content in plain text).

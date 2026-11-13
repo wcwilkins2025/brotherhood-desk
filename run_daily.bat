@@ -1,10 +1,11 @@
 @echo off
-rem Brotherhood Desk daily run: collect -> analyze -> build -> publish
+rem Brotherhood Desk run: collect -> analyze -> build -> publish (the 6 a.m. daily task and the hourly task both call this)
 cd /d C:\Projects\brotherhood-desk
 if not exist logs mkdir logs
+rem a lock older than 90 minutes is left over from a crashed run; clear it
+if exist logs\running.lock powershell -NoProfile -Command "if (((Get-Date) - (Get-Item 'logs\running.lock').LastWriteTime).TotalMinutes -gt 90) { Remove-Item 'logs\running.lock' -Force; Add-Content 'logs\skipped.log' ('stale lock removed ' + (Get-Date)) }"
 if exist logs\running.lock (
-  forfiles /p logs /m running.lock /d -0 /c "cmd /c echo lock present" >nul 2>&1
-  echo another run is in progress, skipping >> logs\skipped.log
+  echo %date% %time% another run is in progress, skipping >> logs\skipped.log
   exit /b 0
 )
 echo %date% %time% > logs\running.lock

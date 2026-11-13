@@ -5,12 +5,29 @@ Runs Claude Code headless (claude -p) under the user's subscription.
   python analyst/analyze.py --days 7     # re-score everything from the last 7 days
 Outputs: data/labels.json (id -> f,t), data/drafts.json (id -> score, reason, kind, draft)
 """
-import argparse, json, subprocess, sys, re, datetime as dt
+import argparse, json, os, subprocess, sys, re, datetime as dt
 from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 ME = "Wiley Wilkins"
+
+
+def claude_env():
+    """Environment for the headless claude call: token from .env, and no nested-session guard."""
+    env = dict(os.environ)
+    envf = ROOT / ".env"
+    if envf.exists():
+        for line in envf.read_text(encoding="utf-8").splitlines():
+            if "=" in line and not line.startswith("#"):
+                k, v = line.split("=", 1)
+                if v.strip():
+                    env[k.strip()] = v.strip()
+    for k in ("CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"):
+        env.pop(k, None)
+    if not env.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        print("note: CLAUDE_CODE_OAUTH_TOKEN is empty in .env; relying on the interactive login")
+    return env
 
 
 def load(name, default):
@@ -36,14 +53,14 @@ def clean(s):
 
 def claude_json(prompt):
     """Call claude -p and return the parsed JSON array from its answer."""
-    r = subprocess.run(["claude", "-p", "--output-format", "json", "--max-turns", "1"], input=prompt, capture_output=True, text=True, encoding="utf-8", timeout=600, shell=True)
-    if r.returncode != 0:
-        print("claude error:", r.stderr[:500]); return None
+    r = subprocess.run(["claude", "-p", "--output-format", "json", "--max-turns", "1"], input=prompt, capture_output=True, text=True, encoding="utf-8", timeout=600, shell=True, env=claude_env())
     try:
         out = json.loads(r.stdout)
         text = out.get("result", "") if isinstance(out, dict) else str(out)
     except Exception:
-        text = r.stdout
+        out = None; text = r.stdout
+    if r.returncode != 0 or (isinstance(out, dict) and out.get("is_error")):
+        print("claude error:", (text or r.stderr or "(no message)").strip()[:500]); return None
     m = re.search(r"\[.*\]", text, re.S)
     if not m:
         print("no JSON in answer:", text[:300]); return None
@@ -51,6 +68,47 @@ def claude_json(prompt):
         return json.loads(m.group(0))
     except Exception as e:
         print("bad JSON:", e, text[:300]); return None
+
+
+LAND = re.compile(r"\b(land|acre|acres|ranch|ranching|cattle|horses?|well|wells|septic|fenc\w*|rural|property|homestead|farm\w*|livestock|water)\b", re.I)
+MONEY = re.compile(r"\b(loan|lend|i'?ll (send|pay|cover|wire)|venmo|paypal|cash ?app|send you (some )?money|help (you )?out financially|\$\d)", re.I)
+AI = re.compile(r"\b(ai|a\.i\.|claude|chatgpt|gpt|drafted|language model|as an assistant)\b", re.I)
+RANCH = re.compile(r"\b(300[- ]acre|ranch|cattle|telephone,? texas)\b", re.I)
+
+
+def lint(draft, post_text):
+    """Mechanical cleanup, then flags Wiley should see before he pastes."""
+    d = draft.replace("—", ", ").replace("–", ", ").replace(" , ", ", ").replace(";", ".")
+    d = re.sub(r"\s*\([^)]{0,80}\)", "", d)                    # no parentheses
+    d = re.sub(r"[ ]{2,}", " ", d)
+    flags = []
+    if MONEY.search(d):
+        flags.append("offers money")
+    if AI.search(d):
+        flags.append("mentions AI or drafting")
+    if RANCH.search(d) and not LAND.search(post_text or ""):
+        flags.append("ranch resume in a thread that is not about land")
+    sents = [x for x in re.split(r"(?<=[.!?])\s+", d) if x.strip()]
+    long = [x for x in sents if len(x.split()) > 22]
+    if len(long) >= 2:
+        flags.append(f"{len(long)} long sentences")
+    if re.search(r"\b(when one of you|some of you|you men need to|you all need)\b", d, re.I):
+        flags.append("callout tone")
+    if len(d.split()) > 200:
+        flags.append("over 200 words")
+    return d.strip(), flags
+
+
+HARD_RULES = """
+## Hard rules for every draft (these override anything else)
+- Sentences under 15 words. One idea each. No semicolons, no dashes, no parentheses.
+- No ranch, cattle or 300 acres unless the post itself is about land, water, animals or rural living.
+- Never offer money, a loan, or to pay for anything. Experience only.
+- Confession, not callout. Say what you got wrong before what he should do.
+- Never mention Claude, AI, drafting, or that anything was written for him.
+- No tagging except at the very start of a reply in a busy thread.
+- End with one real question when it fits. No sign-off needed.
+"""
 
 
 def main():
@@ -94,6 +152,7 @@ def main():
     taxonomy = "\n".join(f"{f['code']} {f['name']}: " + "; ".join(f"{t['code']} {t['name']}" for t in f.get("threads", [])) for f in forum["forums"])
     voice = (ROOT / "analyst" / "voice.md").read_text(encoding="utf-8")
 
+    analyzed = 0
     for i in range(0, len(todo), args.batch):
         batch = todo[i:i + args.batch]
         items = []
@@ -107,7 +166,7 @@ def main():
                 "recent_comments": [{"by": c.get("author"), "text": clean(c.get("content"))[:400]} for c in cl],
             })
         prompt = f"""{voice}
-
+{HARD_RULES}
 ## Forum taxonomy (code name: thread codes)
 {taxonomy}
 
@@ -134,12 +193,17 @@ Fields:
                 continue
             if r.get("f"):
                 labels[pid] = {"f": r["f"], "t": r.get("t")}
-            drafts[pid] = {"score": int(r.get("score", 0) or 0), "kind": r.get("kind", ""), "reason": r.get("reason", ""), "draft": (r.get("draft") or "").strip(), "at": now.isoformat(timespec="minutes")}
+            d, flags = lint((r.get("draft") or "").strip(), clean(posts[pid].get("content")) + " " + posts[pid].get("title", ""))
+            drafts[pid] = {"score": int(r.get("score", 0) or 0), "kind": r.get("kind", ""), "reason": r.get("reason", ""), "draft": d, "flags": flags, "at": now.isoformat(timespec="minutes")}
+            analyzed += 1
         print(f"batch {i // args.batch + 1}: {len(res)} analyzed")
         save("labels.json", labels); save("drafts.json", drafts)
 
-    astate["last"] = now.isoformat(timespec="seconds")
-    save("analyst_state.json", astate)
+    if analyzed:
+        astate["last"] = now.isoformat(timespec="seconds")
+        save("analyst_state.json", astate)
+    else:
+        print("nothing analyzed; will retry next run")
     print("done. drafts with text:", sum(1 for d in drafts.values() if d.get("draft")))
 
 

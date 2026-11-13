@@ -87,7 +87,7 @@ for pid, p in posts.items():
         "text": clean(p.get("content"))[:2500], "lastCommentAt": p.get("lastCommentAt"),
         "isNew": bool(created and created >= new_since), "mine": mine, "newComments": len(new_c),
         "commentList": [{"author": c.get("author"), "text": clean(c.get("content"))[:800], "date": (c.get("createdAt") or "")[:10], "likes": c.get("upvotes", 0), "new": c in new_c} for c in cl[-40:]],
-        "score": d.get("score", 0), "reason": d.get("reason", ""), "draft": d.get("draft", ""), "kind": d.get("kind", ""),
+        "score": d.get("score", 0), "reason": d.get("reason", ""), "draft": d.get("draft", ""), "kind": d.get("kind", ""), "flags": d.get("flags", []),
     })
 out_posts.sort(key=lambda x: x.get("ts") or "", reverse=True)
 
@@ -136,12 +136,31 @@ activity = [{"month": m, "posts": v["posts"], "posters": len(v["posters"]), "new
 # leaderboard from Skool page if present (best effort), else ours
 lb = {"skool": None, "ours": {}}
 if lb_raw:
-    txt = json.dumps(lb_raw)
-    lb["skool_keys"] = list(lb_raw.keys())[:30]
-    for key in ("leaderboard", "leaderboards", "renderData"):
-        if key in lb_raw:
-            lb["skool"] = lb_raw[key]
-            break
+    def sp(u):
+        d = (u.get("metadata") or {}).get("spData")
+        try:
+            return json.loads(d) if isinstance(d, str) else (d or {})
+        except Exception:
+            return {}
+    def board_rows(block):
+        rows = []
+        for e in (block or {}).get("users", []) or []:
+            u = e.get("user") or {}
+            s = sp(u)
+            rows.append({"rank": e.get("rank"), "name": ((u.get("firstName") or "") + " " + (u.get("lastName") or "")).strip() or u.get("name"),
+                         "points": e.get("points", 0), "level": s.get("lv"), "where": (u.get("metadata") or {}).get("location", ""), "uid": e.get("userId")})
+        return rows
+    def me_row(block):
+        b = block or {}
+        return {"rank": b.get("rank"), "points": b.get("points")} if b.get("rank") else None
+    lb["skool"] = {
+        "updated": (lb_raw.get("past7Days") or {}).get("updatedAt"),
+        "d7": board_rows(lb_raw.get("past7Days")), "d30": board_rows(lb_raw.get("past30Days")), "all": board_rows(lb_raw.get("allTime")),
+        "me": {"d7": me_row(lb_raw.get("self7Days")), "d30": me_row(lb_raw.get("self30Days")), "all": me_row(lb_raw.get("selfAllTime"))},
+        "levels": [{"n": g.get("number"), "name": g.get("name"), "pct": g.get("percentOfMembers", 0), "unlocks": [c.get("title", "") for c in g.get("courses", []) or []]} for g in lb_raw.get("groupLevels", []) or []],
+        "myLevel": sp(lb_raw.get("self") or {}).get("lv"), "myPoints": sp(lb_raw.get("self") or {}).get("pts"),
+        "nextLevelAt": sp(lb_raw.get("self") or {}).get("pnl"),
+    }
 lb["ours"] = {
     "posts30": [{"name": m["name"], "v": m["posts30"]} for m in sorted(members, key=lambda m: -m["posts30"])[:15] if m["posts30"]],
     "likes30": [{"name": m["name"], "v": m["likes30"]} for m in sorted(members, key=lambda m: -m["likes30"])[:15] if m["likes30"]],
