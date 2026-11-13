@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brotherhood Desk</title>
+<style>
+  :root { color-scheme: light; --bg:#f3f1ec; --surface:#faf9f6; --fg:#1f2328; --muted:#5c6369; --rule:#d6d2c8; --accent:#8a4b1f; --band:#22302e; --band-fg:#f3f1ec; --chip:#e9e4d9; --new:#2a78d6; --ok:#0ca30c; --warn:#eb6834; --s1:#2a78d6; --grid:#e1e0d9;
+    --display:"Barlow Condensed","Arial Narrow",Impact,sans-serif; --body:system-ui,-apple-system,"Segoe UI",sans-serif; --mono:Consolas,"IBM Plex Mono",monospace; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme:dark; --bg:#15191a; --surface:#1d2224; --fg:#ece9e2; --muted:#a3aba8; --rule:#333b3d; --accent:#d58a52; --band:#0f1516; --chip:#2a3234; --grid:#2c2c2a; --s1:#3987e5; } }
+  :root[data-theme="dark"] { color-scheme:dark; --bg:#15191a; --surface:#1d2224; --fg:#ece9e2; --muted:#a3aba8; --rule:#333b3d; --accent:#d58a52; --band:#0f1516; --chip:#2a3234; --grid:#2c2c2a; --s1:#3987e5; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family:var(--body); font-size:15px; line-height:1.45; }
+  header { background:var(--band); color:var(--band-fg); padding:10px 16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; position:sticky; top:0; z-index:5; }
+  header h1 { font-family:var(--display); font-size:22px; text-transform:uppercase; margin:0; letter-spacing:.02em; }
+  header .stamp { font-family:var(--mono); font-size:12px; opacity:.75; }
+  nav { display:flex; gap:4px; flex-wrap:wrap; margin-left:auto; }
+  nav button { font:inherit; font-size:13px; background:transparent; color:var(--band-fg); border:1px solid rgba(255,255,255,.25); padding:5px 10px; border-radius:4px; cursor:pointer; }
+  nav button.on { background:var(--band-fg); color:var(--band); border-color:var(--band-fg); }
+  nav button b { font-weight:600; color:var(--warn); margin-left:4px; }
+  nav button.on b { color:var(--accent); }
+  main { padding:14px 16px 40px; max-width:1200px; margin:0 auto; }
+  .row { display:grid; grid-template-columns:260px 1fr; gap:14px; }
+  @media (max-width:800px) { .row { grid-template-columns:1fr; } }
+  .rail { background:var(--surface); border:1px solid var(--rule); border-radius:6px; padding:8px; align-self:start; position:sticky; top:62px; max-height:calc(100vh - 80px); overflow:auto; }
+  .rail button { display:flex; width:100%; justify-content:space-between; gap:8px; font:inherit; font-size:14px; text-align:left; background:none; border:0; padding:6px 8px; border-radius:4px; cursor:pointer; color:var(--fg); }
+  .rail button.on { background:var(--chip); font-weight:600; }
+  .rail button span { color:var(--muted); font-family:var(--mono); font-size:12px; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:0 0 10px; }
+  .bar input, .bar select { font:inherit; font-size:14px; padding:6px 9px; border:1px solid var(--rule); background:var(--surface); color:var(--fg); border-radius:4px; }
+  .bar input { flex:1 1 200px; }
+  .count { font-family:var(--mono); font-size:12px; color:var(--muted); margin-left:auto; }
+  .card { background:var(--surface); border:1px solid var(--rule); border-radius:6px; padding:12px 14px; margin:0 0 10px; }
+  .card.new { border-left:4px solid var(--new); }
+  .card.mine { border-left:4px solid var(--accent); }
+  .ttl { font-weight:600; font-size:16px; margin:0; cursor:pointer; }
+  .ttl:hover { color:var(--accent); }
+  .meta { font-size:13px; color:var(--muted); margin:2px 0 6px; display:flex; gap:10px; flex-wrap:wrap; }
+  .meta .tag { background:var(--chip); padding:0 7px; border-radius:9px; font-size:12px; }
+  .meta .nw { color:var(--new); font-weight:600; }
+  .txt { white-space:pre-wrap; margin:6px 0; max-width:80ch; }
+  .txt.clip { max-height:5.5em; overflow:hidden; position:relative; }
+  .txt.clip::after { content:""; position:absolute; left:0; right:0; bottom:0; height:2em; background:linear-gradient(transparent, var(--surface)); }
+  .more { font-size:13px; color:var(--accent); background:none; border:0; cursor:pointer; padding:0; }
+  .draft { border:1px dashed var(--accent); border-radius:6px; padding:10px 12px; margin:8px 0 4px; background:var(--bg); }
+  .draft h4 { margin:0 0 6px; font-size:13px; color:var(--accent); text-transform:uppercase; letter-spacing:.06em; }
+  .draft textarea { width:100%; min-height:120px; font:inherit; font-size:14px; padding:8px; border:1px solid var(--rule); border-radius:4px; background:var(--surface); color:var(--fg); resize:vertical; }
+  .acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; }
+  .acts button, .acts a { font:inherit; font-size:13px; padding:6px 12px; border-radius:4px; border:1px solid var(--rule); background:var(--surface); color:var(--fg); cursor:pointer; text-decoration:none; }
+  .acts .pri { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .acts .done { background:var(--ok); color:#fff; border-color:var(--ok); }
+  .why { font-size:13px; color:var(--muted); margin:0 0 6px; }
+  .cmts { margin:8px 0 0; border-top:1px solid var(--rule); padding-top:6px; }
+  .cmt { font-size:14px; padding:5px 0 5px 10px; border-left:2px solid var(--rule); margin:4px 0; }
+  .cmt.new { border-left-color:var(--new); }
+  .cmt b { font-weight:600; } .cmt span { color:var(--muted); font-size:12px; margin-left:6px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; background:var(--surface); border:1px solid var(--rule); }
+  th, td { text-align:left; padding:6px 9px; border-top:1px solid var(--rule); vertical-align:middle; }
+  th { font-family:var(--mono); font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); border-top:0; cursor:pointer; }
+  td.n, th.n { text-align:right; font-variant-numeric:tabular-nums; }
+  .spark { display:inline-flex; gap:1px; align-items:flex-end; height:18px; }
+  .spark i { display:block; width:5px; background:var(--s1); min-height:1px; }
+  .up { color:var(--ok); } .dn { color:var(--warn); }
+  .grid2 { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:12px; }
+  h2 { font-family:var(--display); font-size:22px; text-transform:uppercase; margin:16px 0 8px; }
+  h3 { font-size:15px; margin:0 0 6px; }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin:0 0 14px; }
+  .tile { background:var(--surface); border:1px solid var(--rule); border-radius:6px; padding:10px 12px; }
+  .tile .v { font-size:26px; font-weight:600; line-height:1.1; } .tile .l { font-size:12px; color:var(--muted); }
+  svg text { fill:var(--muted); font-size:11px; }
+  .gate { max-width:420px; margin:80px auto; background:var(--surface); border:1px solid var(--rule); border-radius:6px; padding:20px; }
+  .gate input { width:100%; font:inherit; padding:8px; margin:8px 0; border:1px solid var(--rule); border-radius:4px; }
+  .gate button { font:inherit; padding:8px 14px; background:var(--accent); color:#fff; border:0; border-radius:4px; cursor:pointer; }
+  .toast { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); background:var(--fg); color:var(--bg); padding:8px 14px; border-radius:4px; font-size:13px; display:none; z-index:9; }
+  .empty { color:var(--muted); padding:20px; text-align:center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Brotherhood Desk</h1>
+  <span class="stamp" id="stamp">loading</span>
+  <nav id="nav"></nav>
+</header>
+<main id="main"><div class="empty">Loading…</div></main>
+<div class="toast" id="toast"></div>
+<script>
+const DATA_URL = 'data/desk.json';
+const GROUP = 'https://www.skool.com/thebrotherhood';
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = d => { if (!d) return ''; const [y,m,dd] = d.slice(0,10).split('-'); return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][+m-1]+' '+(+dd)+(y==='2026'?'':' '+y); };
+const ls = (k, v) => { try { if (v === undefined) return JSON.parse(localStorage.getItem(k) || 'null'); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } };
+let D = null, view = ls('view') || 'today', forumSel = ls('forum') || '', q = '', sortK = 'ts';
+const done = new Set(ls('done') || []);
+const toast = m => { const t = document.getElementById('toast'); t.textContent = m; t.style.display = 'block'; setTimeout(() => t.style.display = 'none', 1800); };
+
+async function decrypt(blob, pass) {
+  const enc = new TextEncoder();
+  const km = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(blob.salt), iterations: blob.iter || 200000, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(blob.iv) }, key, b64(blob.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function boot() {
+  let raw;
+  try { raw = await (await fetch(DATA_URL + '?t=' + Date.now())).json(); } catch (e) { document.getElementById('main').innerHTML = '<div class="empty">No data file yet.</div>'; return; }
+  if (raw.enc) {
+    const saved = sessionStorage.getItem('pass');
+    if (saved) { try { D = await decrypt(raw, saved); } catch (e) { sessionStorage.removeItem('pass'); } }
+    if (!D) {
+      document.getElementById('main').innerHTML = `<div class="gate"><h3>Brotherhood Desk</h3><p>Enter the passphrase.</p><input id="pw" type="password" autofocus><button id="go">Open</button><p id="err" class="why"></p></div>`;
+      const go = async () => { try { D = await decrypt(raw, document.getElementById('pw').value); sessionStorage.setItem('pass', document.getElementById('pw').value); render(); } catch (e) { document.getElementById('err').textContent = 'Wrong passphrase.'; } };
+      document.getElementById('go').onclick = go; document.getElementById('pw').onkeydown = e => { if (e.key === 'Enter') go(); };
+      return;
+    }
+  } else D = raw;
+  render();
+}
+
+function render() {
+  const C = D.counts;
+  document.getElementById('stamp').textContent = 'built ' + D.generated.replace('T', ' ').slice(0, 16);
+  const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', 0], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]];
+  document.getElementById('nav').innerHTML = tabs.map(([k, l, n]) => `<button data-v="${k}" class="${view === k ? 'on' : ''}">${l}${n ? `<b>${n}</b>` : ''}</button>`).join('');
+  document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { view = b.dataset.v; ls('view', view); render(); });
+  const m = document.getElementById('main');
+  ({ today, queue, mine, forums, members, boards, charts, exp })[view](m);
+}
+
+function postCard(p, opts = {}) {
+  const f = D.forums.find(x => x.code === p.f) || {};
+  const t = (f.threads || []).find(x => x.code === p.t) || {};
+  const url = p.slug ? `${GROUP}/${p.slug}` : GROUP;
+  const isDone = done.has(p.id);
+  const cm = p.commentList || [];
+  return `<article class="card ${p.isNew ? 'new' : ''} ${p.mine ? 'mine' : ''}" data-id="${p.id}">
+    <p class="ttl" onclick="toggleTxt(this)">${esc(p.title || '(untitled)')}</p>
+    <div class="meta"><b>${esc(p.author)}</b><span>${fmt(p.date)}</span><span>${p.likes} likes</span><span>${p.comments} comments</span>${p.newComments ? `<span class="nw">${p.newComments} new</span>` : ''}${p.isNew ? '<span class="nw">new post</span>' : ''}${f.name ? `<span class="tag">${esc(f.name)}${t.name ? ' · ' + esc(t.name) : ''}</span>` : ''}${p.pinned ? '<span class="tag">pinned</span>' : ''}</div>
+    <div class="txt clip">${esc(p.text)}</div><button class="more" onclick="toggleTxt(this)">more</button>
+    ${p.draft ? `<div class="draft"><h4>Draft reply · score ${p.score}${isDone ? ' · sent' : ''}</h4><p class="why">${esc(p.reason)}</p><textarea id="ta-${p.id}">${esc(p.draft)}</textarea>
+      <div class="acts"><button class="pri" onclick="copyDraft('${p.id}')">Copy reply</button><a href="${url}" target="_blank" rel="noopener">Open post</a><button class="${isDone ? 'done' : ''}" onclick="markDone('${p.id}')">${isDone ? 'Sent ✓' : 'Mark sent'}</button></div></div>`
+    : `<div class="acts"><a href="${url}" target="_blank" rel="noopener">Open post</a></div>`}
+    ${cm.length && opts.comments !== false ? `<details class="cmts"><summary>${cm.length} comments loaded${p.newComments ? `, ${p.newComments} new` : ''}</summary>${cm.map(c => `<div class="cmt ${c.new ? 'new' : ''}"><b>${esc(c.author)}</b><span>${fmt(c.date)} · ${c.likes} likes</span><div>${esc(c.text)}</div></div>`).join('')}</details>` : ''}
+  </article>`;
+}
+function toggleTxt(el) { const card = el.closest('.card'); const t = card.querySelector('.txt'); t.classList.toggle('clip'); card.querySelector('.more').textContent = t.classList.contains('clip') ? 'more' : 'less'; }
+function copyDraft(id) { const v = document.getElementById('ta-' + id).value; navigator.clipboard.writeText(v).then(() => toast('Reply copied. Paste it in Skool.'), () => toast('Copy blocked. Select the text and copy.')); }
+function markDone(id) { if (done.has(id)) done.delete(id); else done.add(id); ls('done', [...done]); render(); }
+
+function listBar(m, title, extra = '') {
+  return `<h2>${title}</h2><div class="bar"><input id="q" placeholder="Search title, author, text" value="${esc(q)}"><select id="sort"><option value="ts">Newest</option><option value="last">Latest activity</option><option value="likes">Most likes</option><option value="comments">Most comments</option><option value="score">Reply score</option></select>${extra}<span class="count" id="cnt"></span></div><div id="list"></div>`;
+}
+function wire(m, items, renderFn) {
+  const qi = m.querySelector('#q'), si = m.querySelector('#sort');
+  if (si) si.value = sortK;
+  const run = () => {
+    q = qi ? qi.value.trim().toLowerCase() : ''; sortK = si ? si.value : 'ts';
+    let arr = items.filter(p => !q || [p.title, p.author, p.text].join(' ').toLowerCase().includes(q));
+    const key = { ts: p => p.ts || '', last: p => p.lastCommentAt || p.ts || '', likes: p => p.likes, comments: p => p.comments, score: p => p.score }[sortK];
+    arr.sort((a, b) => key(b) > key(a) ? 1 : key(b) < key(a) ? -1 : 0);
+    m.querySelector('#cnt').textContent = arr.length + ' posts';
+    m.querySelector('#list').innerHTML = arr.slice(0, 150).map(renderFn).join('') || '<div class="empty">Nothing here.</div>';
+  };
+  if (qi) qi.oninput = run; if (si) si.onchange = run; run();
+}
+
+function today(m) {
+  const items = D.posts.filter(p => p.isNew || p.newComments);
+  m.innerHTML = `<div class="tiles"><div class="tile"><div class="v">${D.counts.new}</div><div class="l">new posts since last pull</div></div><div class="tile"><div class="v">${items.filter(p => p.newComments).length}</div><div class="l">posts with new comments</div></div><div class="tile"><div class="v">${D.counts.queue}</div><div class="l">drafts waiting</div></div><div class="tile"><div class="v">${D.counts.myNewComments}</div><div class="l">new comments on my threads</div></div></div>` + listBar(m, 'Since the last pull');
+  wire(m, items, postCard);
+}
+function queue(m) {
+  m.innerHTML = listBar(m, 'Reply queue');
+  sortK = 'score';
+  wire(m, D.posts.filter(p => p.draft), postCard);
+}
+function mine(m) {
+  m.innerHTML = listBar(m, 'My threads');
+  wire(m, D.posts.filter(p => p.mine), postCard);
+}
+function forums(m) {
+  const counts = {}; D.posts.forEach(p => counts[p.f] = (counts[p.f] || 0) + 1);
+  const fl = D.forums.filter(f => counts[f.code]);
+  if (!forumSel) forumSel = fl[0].code;
+  m.innerHTML = `<div class="row"><div class="rail">${fl.map(f => `<button data-f="${f.code}" class="${forumSel === f.code ? 'on' : ''}">${esc(f.name)}<span>${counts[f.code]}</span></button>`).join('')}</div><div id="pane">${listBar(m, (fl.find(f => f.code === forumSel) || {}).name || '')}</div></div>`;
+  m.querySelectorAll('.rail button').forEach(b => b.onclick = () => { forumSel = b.dataset.f; ls('forum', forumSel); forums(m); });
+  const f = fl.find(x => x.code === forumSel) || {};
+  wire(m, D.posts.filter(p => p.f === forumSel), postCard);
+  const pane = m.querySelector('#pane h2'); if (pane && f.desc) pane.insertAdjacentHTML('afterend', `<p class="why">${esc(f.desc)}</p>`);
+}
+const spark = w => `<span class="spark">${w.map(v => `<i style="height:${Math.max(1, v / Math.max(1, ...w) * 18)}px"></i>`).join('')}</span>`;
+function members(m) {
+  let key = ls('mkey') || 'recent4', dir = -1;
+  const draw = () => {
+    const arr = D.members.filter(x => !q || (x.name + ' ' + x.where + ' ' + (x.tags || []).join(' ')).toLowerCase().includes(q)).sort((a, b) => (a[key] > b[key] ? 1 : a[key] < b[key] ? -1 : 0) * dir);
+    m.querySelector('#cnt').textContent = arr.length + ' members';
+    m.querySelector('tbody').innerHTML = arr.slice(0, 300).map(x => `<tr><td><b>${esc(x.name)}</b>${x.where ? `<div class="why">${esc(x.where)}</div>` : ''}</td><td>${spark(x.weeks)}</td><td class="n">${x.recent4}</td><td class="n ${x.delta > 0 ? 'up' : x.delta < 0 ? 'dn' : ''}">${x.delta > 0 ? '+' : ''}${x.delta}</td><td class="n">${x.posts}</td><td class="n">${x.likes}</td><td class="n">${fmt(x.last)}</td></tr>`).join('');
+  };
+  m.innerHTML = `<h2>Members · posting trend</h2><p class="why">Spark bars are posts per week for the last 8 weeks. "Last 4" is posts in the last four weeks, "Δ" is the change against the four weeks before.</p><div class="bar"><input id="q" placeholder="Search name, place, topic" value="${esc(q)}"><span class="count" id="cnt"></span></div>
+  <table><thead><tr><th data-k="name">Member</th><th>8 weeks</th><th class="n" data-k="recent4">Last 4</th><th class="n" data-k="delta">Δ</th><th class="n" data-k="posts">Posts</th><th class="n" data-k="likes">Likes</th><th class="n" data-k="last">Last post</th></tr></thead><tbody></tbody></table>`;
+  m.querySelector('#q').oninput = e => { q = e.target.value.trim().toLowerCase(); draw(); };
+  m.querySelectorAll('th[data-k]').forEach(th => th.onclick = () => { if (key === th.dataset.k) dir = -dir; else { key = th.dataset.k; dir = key === 'name' ? 1 : -1; } ls('mkey', key); draw(); });
+  draw();
+}
+function board(title, rows, fmtV = v => v) {
+  return `<div class="card"><h3>${title}</h3><table><tbody>${(rows || []).map((r, i) => `<tr><td class="n" style="width:2em;color:var(--muted)">${i + 1}</td><td>${esc(r.name)}</td>${r.w ? `<td>${spark(r.w)}</td>` : ''}<td class="n">${fmtV(r.v)}</td></tr>`).join('') || '<tr><td class="empty">none</td></tr>'}</tbody></table></div>`;
+}
+function boards(m) {
+  const L = D.leaderboard || {}, o = L.ours || {};
+  let skool = '';
+  if (L.skool) skool = `<div class="card"><h3>Skool leaderboard (raw)</h3><pre style="font-size:12px;max-height:300px;overflow:auto">${esc(JSON.stringify(L.skool, null, 1).slice(0, 4000))}</pre></div>`;
+  m.innerHTML = `<h2>Leaderboards</h2><p class="why">Ours are computed from posts only. Skool's own board counts likes on comments too, which the collector cannot see.</p><div class="grid2">${board('Most posts, last 30 days', o.posts30)}${board('Most likes on posts, last 30 days', o.likes30)}${board('Rising: posts last 4 wks vs prior 4', o.rising, v => '+' + v)}${board('Fading', o.fading)}${board('Most likes on posts, all time', o.likesAll)}</div>${skool}`;
+}
+function bars(rows, key, title, color) {
+  const W = 860, H = 220, pl = 36, pb = 28, pt = 10, iw = W - pl - 10, ih = H - pt - pb, max = Math.max(1, ...rows.map(r => r[key]));
+  const step = Math.pow(10, Math.floor(Math.log10(max))), ticks = []; for (let v = 0; v <= max; v += step) ticks.push(v); if (ticks.length > 8) ticks.splice(0, ticks.length, ...ticks.filter((_, i) => i % 2 === 0));
+  const y = v => pt + ih - v / max * ih, slot = iw / rows.length, bw = Math.min(34, slot * .65);
+  return `<div class="card"><h3>${title}</h3><svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto"><g>${ticks.map(t => `<line x1="${pl}" x2="${W - 10}" y1="${y(t)}" y2="${y(t)}" stroke="var(--grid)"/><text x="${pl - 4}" y="${y(t) + 4}" text-anchor="end">${t}</text>`).join('')}</g>${rows.map((r, i) => `<rect x="${pl + slot * i + (slot - bw) / 2}" y="${y(r[key])}" width="${bw}" height="${Math.max(0, y(0) - y(r[key]))}" fill="${color}" opacity="${i === rows.length - 1 ? .5 : 1}"><title>${r.month}: ${r[key]}</title></rect><text x="${pl + slot * i + slot / 2}" y="${H - 8}" text-anchor="middle">${r.month.slice(2).replace('-', '/')}</text>`).join('')}</svg></div>`;
+}
+function charts(m) {
+  const A = D.activity;
+  m.innerHTML = `<h2>Activity by month</h2><p class="why">Member posts only. The current month is drawn lighter because it is not finished.</p>${bars(A, 'posts', 'Posts', 'var(--s1)')}${bars(A, 'posters', 'Different men posting', 'var(--s1)')}${bars(A, 'newPosters', 'Men posting for the first time', 'var(--s1)')}${bars(A, 'comments', 'Comments on that month\'s posts', 'var(--s1)')}`;
+}
+function exp(m) {
+  const E = D.experiment;
+  if (!E) { m.innerHTML = '<div class="empty">No experiment defined.</div>'; return; }
+  m.innerHTML = `<h2>${esc(E.name)}</h2><p class="why">${esc(E.hypothesis)}</p><p class="why"><b>Cadence:</b> ${esc(E.cadence)} · <b>Measure:</b> ${esc(E.measure)}</p>
+  <table><thead><tr><th>Post</th><th>Posted</th><th class="n">Then</th><th class="n">Now</th><th>Bumped</th><th class="n">Gain (c / l)</th><th>New commenters</th><th></th></tr></thead><tbody>
+  ${E.posts.map(e => `<tr><td><b>${esc(e.title)}</b><div class="why">${esc(e.why)}</div></td><td class="n">${fmt(e.date)}</td><td class="n">${e.comments} c · ${e.likes} l</td><td class="n">${e.now.comments} c · ${e.now.likes} l</td><td>${e.bumped ? fmt(e.bumped) : '<span class="why">not yet</span>'}</td><td class="n">${e.gain ? `<span class="${e.gain.comments > 0 ? 'up' : ''}">+${e.gain.comments} / +${e.gain.likes}</span>` : ''}</td><td>${(e.newCommenters || []).slice(0, 6).map(esc).join(', ')}${(e.newCommenters || []).length > 6 ? ' +' + (e.newCommenters.length - 6) : ''}</td><td><a class="more" href="${GROUP}/${e.slug}" target="_blank" rel="noopener">open</a></td></tr>`).join('')}
+  </tbody></table><p class="why">To record a bump, add <code>{"slug": "...", "date": "YYYY-MM-DD"}</code> to the log in data/experiment_bumps.json, or tell Claude the title and date.</p>`;
+}
+boot();
+</script>
+</body>
+</html>
