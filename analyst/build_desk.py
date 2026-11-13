@@ -172,6 +172,17 @@ if exp:
             base = before[-1] if before else [None, e["comments"], e["likes"]]
             e["gain"] = {"comments": e["now"]["comments"] - base[1], "likes": e["now"]["likes"] - base[2]}
             e["newCommenters"] = sorted({c.get("author") for c in cby.get(pid, []) if (c.get("createdAt") or "") >= e["bumped"]} - {ME})
+    # bench: Dallas's quiet, high-participation posts not in the list, for swapping in
+    have = {e["slug"] for e in exp["posts"]}
+    cutoff30 = (now - dt.timedelta(days=30)).isoformat()
+    bench = []
+    for p in posts.values():
+        if p.get("author") != "Dallas James Wicker" or p.get("slug") in have or p.get("comments", 0) < 25 or (p.get("lastCommentAt") or "") >= cutoff30:
+            continue
+        ask = bool(re.search(r"\?|comment|tell me|below|drop|share|reply", (p.get("title", "") + " " + (p.get("content") or "")[:400]).lower()))
+        bench.append({"slug": p["slug"], "title": p.get("title", ""), "date": (p.get("createdAt") or "")[:10], "comments": p.get("comments", 0), "likes": p.get("upvotes", 0), "ask": ask})
+    bench.sort(key=lambda b: (-b["ask"], -b["comments"]))
+    exp["bench"] = bench[:20]
 
 desk = {
     "experiment": exp,
