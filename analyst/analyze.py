@@ -26,6 +26,14 @@ def iso(s):
     return dt.datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
 
 
+def clean(s):
+    s = s or ""
+    s = re.sub(r"\[/?(ul|ol)\]", "\n", s); s = re.sub(r"\[li\]", "\n- ", s); s = re.sub(r"\[/li\]", "", s)
+    s = re.sub(r"\[([^\]\n]{1,120})\]\((https?://[^)\s]+)\)", r"\1 (\2)", s)
+    s = re.sub(r"\\([()\[\].\-*_#+!`>~])", r"\1", s)
+    return re.sub(r"\n{3,}", "\n\n", s).strip()
+
+
 def claude_json(prompt):
     """Call claude -p and return the parsed JSON array from its answer."""
     r = subprocess.run(["claude", "-p", "--output-format", "json", "--max-turns", "1"], input=prompt, capture_output=True, text=True, encoding="utf-8", timeout=600, shell=True)
@@ -95,8 +103,8 @@ def main():
             items.append({
                 "id": pid, "title": p.get("title", ""), "author": p.get("author", ""), "date": (p.get("createdAt") or "")[:10],
                 "likes": p.get("upvotes", 0), "comments": p.get("comments", 0), "in_my_thread": pid in my_threads,
-                "text": (p.get("content") or "")[:1800],
-                "recent_comments": [{"by": c.get("author"), "text": (c.get("content") or "")[:400]} for c in cl],
+                "text": clean(p.get("content"))[:1800],
+                "recent_comments": [{"by": c.get("author"), "text": clean(c.get("content"))[:400]} for c in cl],
             })
         prompt = f"""{voice}
 

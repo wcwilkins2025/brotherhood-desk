@@ -22,6 +22,19 @@ def iso(s):
     return dt.datetime.fromisoformat(s.replace("Z", "+00:00")) if s else None
 
 
+import re
+def clean(s):
+    """Turn Skool's stored markup into plain text: [ul]/[li] lists, backslash escapes, markdown links."""
+    s = s or ""
+    s = re.sub(r"\[/?(ul|ol)\]", "\n", s)
+    s = re.sub(r"\[li\]", "\n- ", s)
+    s = re.sub(r"\[/li\]", "", s)
+    s = re.sub(r"\[([^\]\n]{1,120})\]\((https?://[^)\s]+)\)", r"\1 (\2)", s)
+    s = re.sub(r"\\([()\[\].\-*_#+!`>~])", r"\1", s)
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
 now = dt.datetime.now(dt.timezone.utc)
 seed = load("posts_seed.json", {"posts": []})["posts"]
 live = load("posts.json", {})
@@ -71,9 +84,9 @@ for pid, p in posts.items():
         "id": pid, "slug": p.get("slug"), "title": p.get("title", ""), "author": p.get("author", ""), "userId": p.get("userId"),
         "role": p.get("role"), "date": p.get("createdAt", "")[:10], "ts": p.get("createdAt"), "comments": p.get("comments", 0),
         "likes": p.get("upvotes", 0), "pinned": p.get("pinned", 0), "f": f, "t": t,
-        "text": (p.get("content") or "")[:2500], "lastCommentAt": p.get("lastCommentAt"),
+        "text": clean(p.get("content"))[:2500], "lastCommentAt": p.get("lastCommentAt"),
         "isNew": bool(created and created >= new_since), "mine": mine, "newComments": len(new_c),
-        "commentList": [{"author": c.get("author"), "text": (c.get("content") or "")[:800], "date": (c.get("createdAt") or "")[:10], "likes": c.get("upvotes", 0), "new": c in new_c} for c in cl[-40:]],
+        "commentList": [{"author": c.get("author"), "text": clean(c.get("content"))[:800], "date": (c.get("createdAt") or "")[:10], "likes": c.get("upvotes", 0), "new": c in new_c} for c in cl[-40:]],
         "score": d.get("score", 0), "reason": d.get("reason", ""), "draft": d.get("draft", ""), "kind": d.get("kind", ""),
     })
 out_posts.sort(key=lambda x: x.get("ts") or "", reverse=True)
