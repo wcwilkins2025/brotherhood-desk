@@ -260,8 +260,10 @@ const ubold = s => [...s].map(ch => { const c = ch.codePointAt(0);
   return c >= 65 && c <= 90 ? String.fromCodePoint(0x1D5D4 + c - 65) : c >= 97 && c <= 122 ? String.fromCodePoint(0x1D5EE + c - 97) : c >= 48 && c <= 57 ? String.fromCodePoint(0x1D7EC + c - 48) : ch; }).join('');
 const MD = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
 function toPlain(t) { return t.replace(/\*\*([^*]+)\*\*/g, (_, s) => ubold(s)).replace(MD, (_, x, u) => `${x}: ${u}`); }
+// Skool's editor turns <br> into empty paragraphs, so a block of several lines becomes a list:
+// a **heading** first line stays a paragraph, the rest become tight <li> items (<ol> when numbered "1. ").
 function toHtml(t) {
-  return t.split(/\n{2,}/).map(par => '<p>' + par.split('\n').map(line => {
+  const inline = line => {
     let out = '', last = 0;
     line = line.replace(/\*\*([^*]+)\*\*/g, (_, s) => ubold(s));
     for (const m of line.matchAll(MD)) {
@@ -270,7 +272,15 @@ function toHtml(t) {
       last = m.index + m[0].length;
     }
     return out + esc(line.slice(last)).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}">${u}</a>`);
-  }).join('<br>') + '</p>').join('');
+  };
+  return t.split(/\n{2,}/).map(par => {
+    const lines = par.split('\n').filter(l => l.trim());
+    if (lines.length < 2) return `<p>${inline(lines[0] || '')}</p>`;
+    const head = /^\*\*.+\*\*/.test(lines[0]) ? `<p>${inline(lines.shift())}</p>` : '';
+    const numbered = lines.every(l => /^\d+\.\s/.test(l));
+    const items = lines.map(l => `<li><p>${inline(numbered ? l.replace(/^\d+\.\s/, '') : l)}</p></li>`).join('');
+    return head + (numbered ? `<ol>${items}</ol>` : `<ul>${items}</ul>`);
+  }).join('');
 }
 function linkHtml(t) { return toHtml(t); }
 function copyRich(t, what) {
@@ -382,8 +392,8 @@ function sunday(pane, I) {
   const index = { title: TITLES.index + tag,
     body: post("Brothers, every Sunday I pull together what's happening in here so the good stuff doesn't get buried. Here's this week's:",
       // single posts first, then sections with several posts (Meetup spots) at the bottom, their lines with no gaps
-      [...links.filter(k => posted[k].length === 1), ...links.filter(k => posted[k].length > 1)].map(k => posted[k].length === 1 ? L(posted[k][0].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k][0].slug))
-        : `${B(INTEL.find(([kk]) => kk === k)[1])}\n` + posted[k].map(x => L(x.title.replace(/\s*\([^)]*\)\s*$/, ''), plink(x.slug))).join('\n')).join('\n\n'),
+      [links.filter(k => posted[k].length === 1).map(k => L(posted[k][0].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k][0].slug))).join('\n'),
+       ...links.filter(k => posted[k].length > 1).map(k => `${B(INTEL.find(([kk]) => kk === k)[1])}\n` + posted[k].map(x => L(x.title.replace(/\s*\([^)]*\)\s*$/, ''), plink(x.slug))).join('\n'))].filter(Boolean).join('\n\n'),
       "Bookmark this one. A new one goes up every Sunday. If you're missing from a list, say so in the comments.") };
   const ageMin = Math.round((Date.now() - new Date(D.generated)) / 60000);
   const stale = ageMin > 15 ? `<div class="card new"><b>This page's data is ${ageMin < 120 ? ageMin + ' minutes' : Math.round(ageMin / 60) + ' hours'} old.</b> Posts you made since then are not counted, and the index below leaves them out. <span class="acts" style="display:inline-flex;margin:0 0 0 8px"><button class="pri" onclick="location.reload()">Reload</button></span></div>` : '';
