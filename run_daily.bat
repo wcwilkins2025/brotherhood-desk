@@ -14,6 +14,7 @@ for /f "usebackq tokens=1,* delims==" %%a in (".env") do set "%%a=%%b"
 echo ===== %date% %time% ===== >> %LOG%
 python collector\collect.py >> %LOG% 2>&1
 python analyst\analyze.py >> %LOG% 2>&1
+python analyst\intel.py >> %LOG% 2>&1
 python analyst\build_desk.py >> %LOG% 2>&1
 python publish.py >> %LOG% 2>&1
 echo ===== done %time% ===== >> %LOG%

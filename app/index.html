@@ -123,11 +123,11 @@ async function boot() {
 function render() {
   const C = D.counts;
   const age = Math.round((Date.now() - new Date(D.generated)) / 60000); document.getElementById('stamp').textContent = 'pulled ' + (age < 60 ? age + ' min ago' : Math.round(age / 60) + ' h ago') + ' · refreshes hourly';
-  const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', D.posts.filter(p => p.isNew || p.newComments).length], ['search', 'Search all', 0], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]];
+  const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', D.posts.filter(p => p.isNew || p.newComments).length], ['search', 'Search all', 0], ['intel', 'Intel', 0], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]];
   document.getElementById('nav').innerHTML = tabs.map(([k, l, n]) => `<button data-v="${k}" class="${view === k ? 'on' : ''}">${l}${n ? `<b>${n}</b>` : ''}</button>`).join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { view = b.dataset.v; ls('view', view); render(); });
   const m = document.getElementById('main');
-  ({ today, queue, mine, forums, search, members, boards, charts, exp })[view](m);
+  ({ today, queue, mine, forums, search, intel, members, boards, charts, exp })[view](m);
 }
 
 function postCard(p, opts = {}) {
@@ -235,6 +235,103 @@ function charts(m) {
   const A = D.activity;
   m.innerHTML = `<h2>Activity by month</h2><p class="why">Member posts only. The current month is drawn lighter because it is not finished.</p>${bars(A, 'posts', 'Posts', 'var(--s1)')}${bars(A, 'posters', 'Different men posting', 'var(--s1)')}${bars(A, 'newPosters', 'Men posting for the first time', 'var(--s1)')}${bars(A, 'comments', 'Comments on that month\'s posts', 'var(--s1)')}`;
 }
+/* ---------- Intel: twelve lists mined from the forum ---------- */
+const prof = h => `https://www.skool.com/@${h}?g=thebrotherhood`;
+const plink = s => `${GROUP}/${s}`;
+const who = (name, h) => h ? `<a href="${prof(h)}" target="skool" rel="noopener"><b>${esc(name)}</b></a>` : `<b>${esc(name)}</b>`;
+const fname = c => (D.forums.find(f => f.code === c) || {}).name || '';
+let intelSel = ls('intel') || 'near', intelQ = '', intelF = '';
+function copyText(t) { navigator.clipboard.writeText(t).then(() => toast('Copied. Paste it into Skool.'), () => toast('Copy blocked.')); }
+const INTEL = [
+  ['near', 'Brothers near you'], ['skills', 'Ask a brother'], ['unanswered', 'Unanswered questions'], ['best', 'Best answers'],
+  ['resources', 'Resource library'], ['helpers', 'Helpers board'], ['unwelcomed', 'New men nobody welcomed'], ['meetups', 'Meetup spots'],
+  ['wins', 'Wins wall'], ['trend', 'What we talk about'], ['gear', 'Gear and vendor picks'], ['events', 'Calls and events']];
+function intel(m) {
+  const I = D.intel || {};
+  const n = { near: (I.near || []).length, skills: (I.skills || []).length, unanswered: (I.unanswered || []).length, best: (I.best || []).length,
+    resources: (I.resources || []).length, helpers: ((I.helpers || {}).d30 || []).length, unwelcomed: (I.unwelcomed || []).length,
+    meetups: (I.meetups || []).length, wins: (I.wins || []).length, trend: (I.hot || []).length, gear: (I.gear || []).length, events: (I.events || []).length };
+  m.innerHTML = `<div class="row"><div class="rail">${INTEL.map(([k, l]) => `<button data-k="${k}" class="${intelSel === k ? 'on' : ''}">${l}<span>${n[k]}</span></button>`).join('')}
+    <p class="why" style="margin:8px 4px 0">Only what men posted in the group. Profile links work when pasted into Skool. To tag a man, type @ and pick his name.</p></div><div id="ipane"></div></div>`;
+  m.querySelectorAll('.rail button').forEach(b => b.onclick = () => { intelSel = b.dataset.k; ls('intel', intelSel); intelQ = ''; intelF = ''; intel(m); });
+  const pane = m.querySelector('#ipane');
+  const head = (title, why, opts = '') => `<h2>${title}</h2><p class="why">${why}</p><div class="bar"><input id="iq" placeholder="Search" value="${esc(intelQ)}">${opts}<button id="icopy">Copy for Skool</button><span class="count" id="icnt"></span></div><div id="ilist"></div>`;
+  const sel = (vals, label) => `<select id="if"><option value="">${label}</option>${vals.map(v => `<option ${intelF === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
+  const hit = (...xs) => !intelQ || xs.join(' ').toLowerCase().includes(intelQ);
+  const go = (items, html, text) => {
+    const run = () => {
+      intelQ = (pane.querySelector('#iq') || {}).value?.trim().toLowerCase() || ''; intelF = (pane.querySelector('#if') || {}).value || '';
+      const arr = items();
+      pane.querySelector('#icnt').textContent = arr.length + ' shown';
+      pane.querySelector('#ilist').innerHTML = html(arr) || '<div class="empty">Nothing here.</div>';
+      pane.querySelector('#icopy').onclick = () => copyText(text(arr));
+    };
+    const qi = pane.querySelector('#iq'), fi = pane.querySelector('#if');
+    if (qi) qi.oninput = run; if (fi) fi.onchange = run; run();
+  };
+  const S = intelSel;
+  if (S === 'near') {
+    const states = [...new Set((I.near || []).map(x => x.state))].sort();
+    pane.innerHTML = head('Brothers near you', 'Where each man said he lives, town level at most. Pick a state or search a town or area.', sel(states, 'All states'));
+    go(() => (I.near || []).filter(x => (!intelF || x.state === intelF) && hit(x.name, x.town, x.state, x.area)),
+      arr => { const g = {}; arr.forEach(x => (g[x.state + (x.area ? ' · ' + x.area : '')] ||= []).push(x));
+        return Object.entries(g).map(([k, v]) => `<div class="card"><h4 style="margin:0 0 6px">${esc(k)} <span class="why">${v.length}</span></h4>${v.map(x => `<div>${who(x.name, x.handle)} <span class="why">${esc(x.town)}</span></div>`).join('')}</div>`).join(''); },
+      arr => `Brothers ${intelF ? 'in ' + intelF : 'near each other'}:\n\n` + arr.map(x => `${x.name}${x.town ? ', ' + x.town : ''}${x.area ? ' (' + x.area + ')' : ''}: ${prof(x.handle)}`).join('\n'));
+  } else if (S === 'skills') {
+    const cats = [...new Set((I.skills || []).map(x => x.cat))].sort();
+    pane.innerHTML = head('Ask a brother', 'Skills and trades men said they have, in their own words. Still filling in as the analyst reads every post.', sel(cats, 'All skills'));
+    go(() => (I.skills || []).filter(x => (!intelF || x.cat === intelF) && hit(x.name, x.skill, x.cat, x.q)),
+      arr => arr.map(x => `<div class="card"><div class="meta">${who(x.name, x.handle)}<span class="tag">${esc(x.skill)}</span><span>${esc(x.cat)}</span></div><p class="why">"${esc(x.q)}"${x.slug ? ` · <a href="${plink(x.slug)}" target="skool">where he said it</a>` : ''}</p></div>`).join(''),
+      arr => `Ask a brother${intelF ? ': ' + intelF : ''}\n\n` + arr.map(x => `${x.name}, ${x.skill}: ${prof(x.handle)}`).join('\n'));
+  } else if (S === 'unanswered' || S === 'unwelcomed') {
+    const list = I[S] || [];
+    pane.innerHTML = head(S === 'unanswered' ? 'Unanswered questions' : 'New men nobody welcomed',
+      S === 'unanswered' ? 'Last 60 days. A man asked and no one else has replied yet.' : 'Intro posts from the last 60 days with no reply from anyone else.');
+    go(() => list.filter(x => hit(x.title, x.author, x.text)),
+      arr => arr.map(x => `<div class="card"><div class="meta">${who(x.author, x.handle)}<span>${fmt(x.date)}</span>${x.f ? `<span class="tag">${esc(fname(x.f))}</span>` : ''}</div><p class="ttl">${esc(x.title)}</p><p class="why">${esc(x.text)}</p><div class="acts"><a href="${plink(x.slug)}" target="skool">Open post</a></div></div>`).join(''),
+      arr => (S === 'unanswered' ? 'These brothers asked and are still waiting on a reply:\n\n' : 'New brothers who could use a welcome:\n\n') + arr.map(x => `${x.author}, ${x.title}:\n${plink(x.slug)}`).join('\n\n'));
+  } else if (S === 'best') {
+    const fs = [...new Set((I.best || []).map(x => x.f).filter(Boolean))].sort();
+    pane.innerHTML = head('Best answers', 'Questions men asked, with the most-liked reply from another brother. Struggles posts are left out.',
+      `<select id="if"><option value="">All forums</option>${fs.map(f => `<option value="${f}" ${intelF === f ? 'selected' : ''}>${esc(fname(f))}</option>`).join('')}</select>`);
+    go(() => (I.best || []).filter(x => (!intelF || x.f === intelF) && hit(x.title, x.asker, x.answer.name, x.answer.text)),
+      arr => arr.slice(0, 150).map(x => `<div class="card"><p class="ttl"><a href="${plink(x.slug)}" target="skool">${esc(x.title)}</a></p><div class="meta"><span>asked by ${esc(x.asker)}</span><span>${fmt(x.date)}</span>${x.f ? `<span class="tag">${esc(fname(x.f))}</span>` : ''}</div><div class="cmt">${who(x.answer.name, x.answer.handle)} <span>${x.answer.likes} likes</span><div>${esc(x.answer.text)}</div></div></div>`).join(''),
+      arr => 'Best answers from brothers:\n\n' + arr.slice(0, 15).map(x => `${x.title}\nBest answer: ${x.answer.name}\n${plink(x.slug)}`).join('\n\n'));
+  } else if (S === 'resources') {
+    const kinds = [...new Set((I.resources || []).map(x => x.kind))].sort();
+    pane.innerHTML = head('Resource library', 'Every outside link men shared, most-shared first.', sel(kinds, 'All kinds'));
+    go(() => (I.resources || []).filter(x => (!intelF || x.kind === intelF) && hit(x.url, x.host, x.title, (x.by || []).join(' '), fname(x.f))),
+      arr => `<table><tr><th>Link</th><th>Shared in</th><th>By</th><th class="n">Times</th></tr>${arr.slice(0, 300).map(x => `<tr><td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.host)}</a><div class="why">${esc(x.kind)} · ${fmt(x.date)}</div></td><td>${x.slug ? `<a href="${plink(x.slug)}" target="skool">${esc((x.title || '').slice(0, 60))}</a>` : ''}</td><td>${esc((x.by || []).join(', '))}</td><td class="n">${x.count}</td></tr>`).join('')}</table>`,
+      arr => 'Resources brothers have shared:\n\n' + arr.slice(0, 30).map(x => `${x.title ? x.title.slice(0, 60) + ': ' : ''}${x.url}`).join('\n'));
+  } else if (S === 'helpers') {
+    pane.innerHTML = `<h2>Helpers board</h2><p class="why">Men who reply on other men's posts the most. This counts brothers helping brothers, not points.</p><div class="bar"><button id="icopy">Copy for Skool</button></div><div class="grid2">${[['d30', 'Last 30 days'], ['all', 'All time']].map(([k, l]) => `<div><h4>${l}</h4><table><tr><th>#</th><th>Brother</th><th class="n">Replies</th><th class="n">Men helped</th></tr>${((I.helpers || {})[k] || []).map((x, i) => `<tr><td>${i + 1}</td><td>${who(x.name, x.handle)}</td><td class="n">${x.replies}</td><td class="n">${x.men}</td></tr>`).join('')}</table></div>`).join('')}</div>`;
+    pane.querySelector('#icopy').onclick = () => copyText('Brothers who showed up for other brothers the last 30 days:\n\n' + ((I.helpers || {}).d30 || []).slice(0, 10).map((x, i) => `${i + 1}. ${x.name}, ${x.replies} replies to ${x.men} brothers: ${prof(x.handle)}`).join('\n'));
+  } else if (S === 'meetups') {
+    pane.innerHTML = head('Meetup spots', 'Areas where five or more men said they live.');
+    go(() => (I.meetups || []).filter(x => hit(x.area, x.state, x.men.map(y => y.name + ' ' + y.town).join(' '))),
+      arr => arr.map(x => `<div class="card"><h4 style="margin:0 0 6px">${esc(x.area)}, ${esc(x.state)} <span class="why">${x.count} men</span></h4>${x.men.map(y => `<div>${who(y.name, y.handle)} <span class="why">${esc(y.town)}</span></div>`).join('')}<div class="acts"><button onclick='copyText(${JSON.stringify(`Brothers in the ${x.area} area, there are ${x.count} of us. Who's up for a meetup?\n\n` + x.men.map(y => `${y.name}${y.town ? ', ' + y.town : ''}: ${prof(y.handle)}`).join('\n')).replace(/'/g, '&#39;')})'>Copy this area</button></div></div>`).join(''),
+      arr => arr.map(x => `${x.area}, ${x.state}: ${x.count} brothers`).join('\n'));
+  } else if (S === 'wins') {
+    pane.innerHTML = head('Wins wall', 'Wins and check-ins from the last 14 days.');
+    go(() => (I.wins || []).filter(x => hit(x.name, x.text)),
+      arr => arr.map(x => `<div class="card"><div class="meta">${who(x.name, x.handle)}<span>${fmt(x.date)}</span><span>${x.likes} likes</span>${x.slug ? `<a href="${plink(x.slug)}" target="skool">${esc((x.title || '').slice(0, 40))}</a>` : ''}</div><div class="txt">${esc(x.text)}</div></div>`).join(''),
+      arr => 'Wins from brothers this week. Go give them a like:\n\n' + arr.slice(0, 15).map(x => `${x.name}: ${x.text.slice(0, 120)}${x.text.length > 120 ? '...' : ''}\n${x.slug ? plink(x.slug) : ''}`).join('\n\n'));
+  } else if (S === 'trend') {
+    pane.innerHTML = `<h2>What the group is talking about</h2><p class="why">Posts and comments per forum this week, against the weekly average of the four weeks before.</p><table><tr><th>Forum</th><th class="n">This week</th><th class="n">Weekly avg</th><th class="n">Change</th></tr>${(I.trend || []).map(t => `<tr><td>${esc(fname(t.f))}</td><td class="n">${t.week}</td><td class="n">${t.avg}</td><td class="n ${t.change > 0 ? 'up' : t.change < 0 ? 'dn' : ''}">${t.change > 0 ? '+' : ''}${t.change}</td></tr>`).join('')}</table><h3>Busiest threads this week</h3>${(I.hot || []).map(h => `<div class="card"><div class="meta"><b>${h.recent} new comments</b><span>${esc(h.author)}</span>${h.f ? `<span class="tag">${esc(fname(h.f))}</span>` : ''}</div><p class="ttl"><a href="${plink(h.slug)}" target="skool">${esc(h.title)}</a></p></div>`).join('')}`;
+  } else if (S === 'gear') {
+    const kinds = [...new Set((I.gear || []).map(x => x.kind))].sort();
+    pane.innerHTML = head('Gear and vendor picks', 'Products, stores and books men said they use and like. Still filling in as the analyst reads every post.', sel(kinds, 'All kinds'));
+    go(() => (I.gear || []).filter(x => (!intelF || x.kind === intelF) && hit(x.item, x.by.map(b => b.name + ' ' + b.q).join(' '))),
+      arr => arr.map(x => `<div class="card"><div class="meta"><b>${esc(x.item)}</b><span class="tag">${esc(x.kind)}</span><span>${x.count} ${x.count === 1 ? 'man' : 'men'}</span></div>${x.by.map(b => `<p class="why">${who(b.name, b.handle)}: "${esc(b.q)}"${b.slug ? ` · <a href="${plink(b.slug)}" target="skool">post</a>` : ''}</p>`).join('')}</div>`).join(''),
+      arr => 'What brothers recommend:\n\n' + arr.slice(0, 25).map(x => `${x.item} (${x.by.map(b => b.name).join(', ')})`).join('\n'));
+  } else if (S === 'events') {
+    pane.innerHTML = head('Calls and events', 'Live calls, workshops and module drops announced by the admins in the last six months.');
+    go(() => (I.events || []).filter(x => hit(x.title, x.text)),
+      arr => arr.map(x => `<div class="card"><div class="meta"><b>${esc(x.author)}</b><span>${fmt(x.date)}</span></div><p class="ttl"><a href="${plink(x.slug)}" target="skool">${esc(x.title)}</a></p><p class="why">${esc(x.text)}</p></div>`).join(''),
+      arr => 'Calls and events:\n\n' + arr.slice(0, 10).map(x => `${fmt(x.date)}: ${x.title}\n${plink(x.slug)}`).join('\n\n'));
+  }
+}
+
 function exp(m) {
   const E = D.experiment;
   if (!E) { m.innerHTML = '<div class="empty">No experiment defined.</div>'; return; }

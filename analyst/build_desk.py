@@ -203,8 +203,11 @@ if exp:
     bench.sort(key=lambda b: (-b["ask"], -b["comments"]))
     exp["bench"] = bench[:20]
 
+from intel_build import build_intel
+intel = build_intel(posts, comments, {p["id"]: p["f"] for p in out_posts}, now, load("intel.json", {}), load("optout.json", []), ME)
+
 desk = {
-    "experiment": exp,
+    "experiment": exp, "intel": intel,
     "generated": now.isoformat(timespec="seconds"), "lastRun": state.get("last_run"), "newSince": new_since.isoformat(timespec="seconds"),
     "me": ME, "forums": forums, "posts": out_posts, "members": members, "activity": activity, "leaderboard": lb,
     "counts": {"posts": len(out_posts), "new": sum(1 for p in out_posts if p["isNew"]), "queue": sum(1 for p in out_posts if p["draft"]),
