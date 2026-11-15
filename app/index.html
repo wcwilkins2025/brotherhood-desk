@@ -375,13 +375,14 @@ function sunday(pane, I) {
   const done = SUNDAY_ORDER.filter(k => posted[k]).length;
   const rows = SUNDAY_ORDER.map((k, i) => {
     const p = MK[k](full[k], tag), have = full[k].length, pk = posted[k];
-    return `<div class="card ${pk ? 'mine' : ''}"><div class="meta"><b>${i + 1}. ${esc(p.title)}</b>${pk ? `<span class="tag">posted ${fmt(pk.date)} ✓</span><a href="${plink(pk.slug)}" target="skool">open</a>` : '<span>not posted this week</span>'}<span>${have} items · about ${p.body.replace(MD, '$1').replace(/\*\*/g, '').length.toLocaleString()} characters</span></div>
+    return `<div class="card ${pk ? 'mine' : ''}"><div class="meta"><b>${i + 1}. ${esc(p.title)}</b>${pk ? `<span class="tag">posted ✓ ${pk.length > 1 ? pk.length + ' posts' : fmt(pk[0].date)}</span>${pk.map(x => `<a href="${plink(x.slug)}" target="skool">${esc(pk.length > 1 ? x.title : 'open')}</a>`).join(' ')}` : '<span>not posted this week</span>'}<span>${have} items · about ${p.body.replace(MD, '$1').replace(/\*\*/g, '').length.toLocaleString()} characters</span></div>
       <div class="acts">${postBtns(p)}</div></div>`;
   }).join('');
   const links = SUNDAY_ORDER.filter(k => posted[k]);
   const index = { title: TITLES.index + tag,
     body: post("Brothers, every Sunday I pull together what's happening in here so the good stuff doesn't get buried. Here's this week's:",
-      links.map(k => `${L(posted[k].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k].slug))}`).join('\n'),
+      links.map(k => posted[k].length === 1 ? L(posted[k][0].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k][0].slug))
+        : `${B(INTEL.find(([kk]) => kk === k)[1])}\n` + posted[k].map(x => L(x.title.replace(/\s*\([^)]*\)\s*$/, ''), plink(x.slug))).join('\n')).join('\n\n'),
       "Bookmark this one. A new one goes up every Sunday. If you're missing from a list, say so in the comments.") };
   pane.innerHTML = `<h2>Sunday posts${tag ? ' · week of ' + fmt(S.weekOf) : ''}</h2>
     <p class="why">Post these in order. For each one, Copy title goes in Skool's Title box and Copy post goes in the body. The desk spots each one you post within the hour. Post the index last, once the posts you want in it show ✓.</p>

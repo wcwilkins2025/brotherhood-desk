@@ -19,6 +19,12 @@ SUNDAY_TITLES = {"near": "Brothers near you", "skills": "Ask a Brother: who know
                  "helpers": "Brothers who showed up for other brothers", "meetups": "Where brothers live close together", "wins": "Wins this week",
                  "trend": "What brothers are talking about this week", "gear": "What brothers recommend", "events": "Calls and events you may have missed",
                  "index": "This week's Brotherhood intel"}
+# The titles Wiley actually posts under (first used 2026-11-15). Matched as "title starts with".
+# A leading * means "title contains" instead of "starts with".
+SUNDAY_ALIASES = {"meetups": ["Brothers in the ", "*brothers: let's meet"], "trend": ["Busiest discussions"], "unwelcomed": ["Men nobody welcomed"],
+                  "helpers": ["Men answered the most", "Men who answered the most"], "resources": ["Resource library"],
+                  "best": ["Best answers"], "skills": ["Ask a brother"], "wins": ["Wins"],
+                  "gear": ["Gear and vendor", "Gear picks"], "events": ["Calls and events"], "index": ["Brotherhood intel", "This week's intel"]}
 
 
 def _iso(s):
@@ -209,21 +215,23 @@ def build_intel(posts, comments, post_f, now, intel_raw, optout, me):
             events.append(dict(ref(p), author=p.get("author"), text=t[:300]))
     events.sort(key=lambda e: e["date"], reverse=True)
 
-    # Sunday posts: which intel posts Wiley has put up since this week's Sunday. Titles match TITLES in app/index.html.
+    # Sunday posts: which intel posts Wiley has put up for this week's Sunday (from Saturday noon on).
+    # Matched by the desk's titles or by the titles Wiley actually uses (SUNDAY_ALIASES); a section can hold several posts.
     local_now = now.astimezone()
     week_of = (local_now - dt.timedelta(days=(local_now.weekday() + 1) % 7)).date()   # most recent Sunday, today if Sunday
-    start = dt.datetime.combine(week_of, dt.time(0), tzinfo=local_now.tzinfo)
+    start = dt.datetime.combine(week_of - dt.timedelta(days=1), dt.time(12), tzinfo=local_now.tzinfo)
     norm = lambda s: re.sub(r"\s+", " ", unicodedata.normalize("NFKC", s or "")).strip().lower()
-    posted = {}
-    for pid, p in posts.items():
+    posted = collections.defaultdict(list)
+    for pid, p in sorted(posts.items(), key=lambda kv: kv[1].get("createdAt") or ""):
         c = _iso(p.get("createdAt"))
         if p.get("author") != me or not c or c < start:
             continue
         t = norm(p.get("title"))
-        for k, base in SUNDAY_TITLES.items():
-            if t.startswith(norm(base)) and (k not in posted or posted[k]["date"] < (p.get("createdAt") or "")[:10]):
-                posted[k] = {"slug": p.get("slug"), "title": unicodedata.normalize("NFKC", p.get("title") or ""), "date": (p.get("createdAt") or "")[:10]}
-    sunday = {"weekOf": week_of.isoformat(), "posted": posted}
+        for k in SUNDAY_TITLES:
+            if any((norm(b[1:]) in t) if b.startswith("*") else t.startswith(norm(b)) for b in [SUNDAY_TITLES[k]] + SUNDAY_ALIASES.get(k, [])):
+                posted[k].append({"slug": p.get("slug"), "title": unicodedata.normalize("NFKC", p.get("title") or "").strip(), "date": (p.get("createdAt") or "")[:10]})
+                break
+    sunday = {"weekOf": week_of.isoformat(), "posted": dict(posted)}
 
     return {"sunday": sunday, "near": near, "skills": skills, "unanswered": unanswered, "best": best[:300], "resources": resources,
             "helpers": helpers_board, "unwelcomed": unwelcomed, "meetups": meetups, "wins": wins[:200],
