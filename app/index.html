@@ -241,7 +241,18 @@ const plink = s => `${GROUP}/${s}`;
 const who = (name, h) => h ? `<a href="${prof(h)}" target="skool" rel="noopener"><b>${esc(name)}</b></a>` : `<b>${esc(name)}</b>`;
 const fname = c => (D.forums.find(f => f.code === c) || {}).name || '';
 let intelSel = ls('intel') || 'near', intelQ = '', intelF = '';
-function copyText(t) { navigator.clipboard.writeText(t).then(() => toast('Copied. Paste it into Skool.'), () => toast('Copy blocked.')); }
+// Copy as rich text with real links (Skool's editor keeps pasted <a> links) plus a plain-text fallback.
+function linkHtml(t) {
+  return t.split(/\n{2,}/).map(par => '<p>' + par.split('\n').map(line =>
+    esc(line).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}">${u}</a>`)).join('<br>') + '</p>').join('');
+}
+function copyText(t) {
+  const ok = () => toast('Copied with links. Paste it into Skool.');
+  const plain = () => navigator.clipboard.writeText(t).then(() => toast('Copied as plain text.'), () => toast('Copy blocked.'));
+  if (window.ClipboardItem && navigator.clipboard.write) {
+    navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([linkHtml(t)], { type: 'text/html' }), 'text/plain': new Blob([t], { type: 'text/plain' }) })]).then(ok, plain);
+  } else plain();
+}
 const INTEL = [
   ['near', 'Brothers near you'], ['skills', 'Ask a brother'], ['unanswered', 'Unanswered questions'], ['best', 'Best answers'],
   ['resources', 'Resource library'], ['helpers', 'Helpers board'], ['unwelcomed', 'New men nobody welcomed'], ['meetups', 'Meetup spots'],
