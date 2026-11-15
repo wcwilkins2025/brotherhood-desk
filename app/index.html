@@ -246,6 +246,10 @@ const INTEL = [
   ['near', 'Brothers near you'], ['skills', 'Ask a brother'], ['unanswered', 'Unanswered questions'], ['best', 'Best answers'],
   ['resources', 'Resource library'], ['helpers', 'Helpers board'], ['unwelcomed', 'New men nobody welcomed'], ['meetups', 'Meetup spots'],
   ['wins', 'Wins wall'], ['trend', 'What we talk about'], ['gear', 'Gear and vendor picks'], ['events', 'Calls and events']];
+function resGroups(arr) {
+  const g = {}; arr.forEach(x => (g[fname(x.f) || 'Other'] ||= []).push(x));
+  return Object.entries(g).sort((a, b) => b[1].length - a[1].length);
+}
 function intel(m) {
   const I = D.intel || {};
   const n = { near: (I.near || []).length, skills: (I.skills || []).length, unanswered: (I.unanswered || []).length, best: (I.best || []).length,
@@ -304,8 +308,10 @@ function intel(m) {
     const kinds = [...new Set((I.resources || []).map(x => x.kind))].sort();
     pane.innerHTML = head('Resource library', 'Every outside link men shared, most-shared first.', sel(kinds, 'All kinds'));
     go(() => (I.resources || []).filter(x => (!intelF || x.kind === intelF) && hit(x.url, x.host, x.title, (x.by || []).join(' '), fname(x.f))),
-      arr => `<table><tr><th>Link</th><th>Shared in</th><th>By</th><th class="n">Times</th></tr>${arr.slice(0, 300).map(x => `<tr><td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.host)}</a><div class="why">${esc(x.kind)} · ${fmt(x.date)}</div></td><td>${x.slug ? `<a href="${plink(x.slug)}" target="skool">${esc((x.title || '').slice(0, 60))}</a>` : ''}</td><td>${esc((x.by || []).join(', '))}</td><td class="n">${x.count}</td></tr>`).join('')}</table>`,
-      arr => 'Resources brothers have shared:\n\n' + arr.slice(0, 30).map(x => `${x.title ? x.title.slice(0, 60) + ': ' : ''}${x.url}`).join('\n'));
+      arr => resGroups(arr).map(([f, v]) => `<details class="card" ${resGroups(arr).length <= 3 ? 'open' : ''}><summary><b>${esc(f)}</b> <span class="why">${v.length} ${v.length === 1 ? 'link' : 'links'}</span></summary>
+        <table style="margin-top:8px"><tr><th>Link</th><th>Shared in</th><th>By</th><th class="n">Times</th></tr>${v.slice(0, 150).map(x => `<tr><td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.host)}</a><div class="why">${esc(x.kind)} · ${fmt(x.date)}</div></td><td>${x.slug ? `<a href="${plink(x.slug)}" target="skool">${esc((x.title || '').slice(0, 60))}</a>` : ''}</td><td>${esc((x.by || []).join(', '))}</td><td class="n">${x.count}</td></tr>`).join('')}</table>
+        <div class="acts"><button onclick='copyText(${JSON.stringify(`${f}: resources brothers have shared\n\n` + v.slice(0, 20).map(x => `${x.title ? x.title.slice(0, 60) + ': ' : ''}${x.url}`).join('\n')).replace(/'/g, '&#39;')})'>Copy this topic</button></div></details>`).join(''),
+      arr => 'Resources brothers have shared:\n\n' + resGroups(arr).map(([f, v]) => `${f}:\n` + v.slice(0, 8).map(x => `  ${x.title ? x.title.slice(0, 60) + ': ' : ''}${x.url}`).join('\n')).join('\n\n'));
   } else if (S === 'helpers') {
     pane.innerHTML = `<h2>Helpers board</h2><p class="why">Men who reply on other men's posts the most. This counts brothers helping brothers, not points.</p><div class="bar"><button id="icopy">Copy for Skool</button></div><div class="grid2">${[['d30', 'Last 30 days'], ['all', 'All time']].map(([k, l]) => `<div><h4>${l}</h4><table><tr><th>#</th><th>Brother</th><th class="n">Replies</th><th class="n">Men helped</th></tr>${((I.helpers || {})[k] || []).map((x, i) => `<tr><td>${i + 1}</td><td>${who(x.name, x.handle)}</td><td class="n">${x.replies}</td><td class="n">${x.men}</td></tr>`).join('')}</table></div>`).join('')}</div>`;
     pane.querySelector('#icopy').onclick = () => copyText('Brothers who showed up for other brothers the last 30 days:\n\n' + ((I.helpers || {}).d30 || []).slice(0, 10).map((x, i) => `${i + 1}. ${x.name}, ${x.replies} replies to ${x.men} brothers: ${prof(x.handle)}`).join('\n'));
