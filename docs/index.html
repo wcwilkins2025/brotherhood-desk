@@ -98,7 +98,17 @@ const toast = m => { const t = document.getElementById('toast'); t.textContent =
 async function decrypt(blob, pass) {
   const enc = new TextEncoder();
   const km = await crypto.subtle.importKey('raw', enc.encode(pass), 'PBKDF2', false, ['deriveKey']);
-  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(blob.salt), iterations: blob.iter || 200000, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const kek = salt => crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(salt), iterations: blob.iter || 200000, hash: 'SHA-256' }, km, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  let key;
+  if (blob.keys) {   // v2: each passphrase unlocks a wrapped copy of one data key
+    for (const k of blob.keys) {
+      try {
+        const raw = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(k.iv) }, await kek(k.salt), b64(k.wk));
+        key = await crypto.subtle.importKey('raw', raw, 'AES-GCM', false, ['decrypt']); break;
+      } catch (e) { /* not this passphrase's slot */ }
+    }
+    if (!key) throw new Error('wrong passphrase');
+  } else key = await kek(blob.salt);   // v1: one passphrase
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(blob.iv) }, key, b64(blob.ct));
   return JSON.parse(new TextDecoder().decode(pt));
 }
