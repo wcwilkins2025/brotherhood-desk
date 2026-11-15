@@ -118,11 +118,17 @@ async function boot() {
   let raw;
   try { raw = await (await fetch(DATA_URL + '?t=' + Date.now())).json(); } catch (e) { document.getElementById('main').innerHTML = '<div class="empty">No data file yet.</div>'; return; }
   if (raw.enc) {
+    // Wiley's passphrase opens the full desk; a guest passphrase only opens data/guest.json, a copy without his drafts.
+    const open = async pass => {
+      try { return await decrypt(raw, pass); } catch (e) { /* not the owner's passphrase */ }
+      const g = await (await fetch('data/guest.json?t=' + Date.now())).json();
+      const d = await decrypt(g, pass); d.guest = true; return d;
+    };
     const saved = sessionStorage.getItem('pass');
-    if (saved) { try { D = await decrypt(raw, saved); } catch (e) { sessionStorage.removeItem('pass'); } }
+    if (saved) { try { D = await open(saved); } catch (e) { sessionStorage.removeItem('pass'); } }
     if (!D) {
       document.getElementById('main').innerHTML = `<div class="gate"><h3>Brotherhood Desk</h3><p>Enter the passphrase.</p><input id="pw" type="password" autofocus><button id="go">Open</button><p id="err" class="why"></p></div>`;
-      const go = async () => { try { D = await decrypt(raw, document.getElementById('pw').value); sessionStorage.setItem('pass', document.getElementById('pw').value); render(); } catch (e) { document.getElementById('err').textContent = 'Wrong passphrase.'; } };
+      const go = async () => { try { D = await open(document.getElementById('pw').value); sessionStorage.setItem('pass', document.getElementById('pw').value); render(); } catch (e) { document.getElementById('err').textContent = 'Wrong passphrase.'; } };
       document.getElementById('go').onclick = go; document.getElementById('pw').onkeydown = e => { if (e.key === 'Enter') go(); };
       return;
     }
@@ -133,7 +139,10 @@ async function boot() {
 function render() {
   const C = D.counts;
   const age = Math.round((Date.now() - new Date(D.generated)) / 60000); document.getElementById('stamp').textContent = 'pulled ' + (age < 60 ? age + ' min ago' : Math.round(age / 60) + ' h ago') + ' · refreshes hourly';
-  const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', D.posts.filter(p => p.isNew || p.newComments).length], ['search', 'Search all', 0], ['intel', 'Intel', 0], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]];
+  const OWNER_ONLY = ['queue', 'mine', 'exp'];   // Wiley's drafts, threads and bump experiment: never in the guest view
+  const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', D.posts.filter(p => p.isNew || p.newComments).length], ['search', 'Search all', 0], ['intel', 'Intel', 0], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]]
+    .filter(([k]) => !(D.guest && OWNER_ONLY.includes(k)));
+  if (!tabs.some(([k]) => k === view)) view = 'today';
   document.getElementById('nav').innerHTML = tabs.map(([k, l, n]) => `<button data-v="${k}" class="${view === k ? 'on' : ''}">${l}${n ? `<b>${n}</b>` : ''}</button>`).join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { view = b.dataset.v; ls('view', view); render(); });
   const m = document.getElementById('main');
@@ -179,7 +188,7 @@ function wire(m, items, renderFn) {
 
 function today(m) {
   const items = D.posts.filter(p => p.isNew || p.newComments);
-  m.innerHTML = `<div class="tiles"><div class="tile"><div class="v">${D.counts.new}</div><div class="l">new posts, last 24 hours</div></div><div class="tile"><div class="v">${items.filter(p => p.newComments).length}</div><div class="l">posts with new comments</div></div><div class="tile"><div class="v">${D.counts.queue}</div><div class="l">drafts waiting</div></div><div class="tile"><div class="v">${D.counts.myNewComments}</div><div class="l">new comments on my threads</div></div></div>` + listBar(m, 'Last 24 hours');
+  m.innerHTML = `<div class="tiles"><div class="tile"><div class="v">${D.counts.new}</div><div class="l">new posts, last 24 hours</div></div><div class="tile"><div class="v">${items.filter(p => p.newComments).length}</div><div class="l">posts with new comments</div></div>${D.guest ? '' : `<div class="tile"><div class="v">${D.counts.queue}</div><div class="l">drafts waiting</div></div><div class="tile"><div class="v">${D.counts.myNewComments}</div><div class="l">new comments on my threads</div></div>`}</div>` + listBar(m, 'Last 24 hours');
   wire(m, items, postCard);
 }
 function queue(m) {
@@ -231,7 +240,7 @@ function boards(m) {
     const sb = (title, rows, me) => `<div class="card"><h3>${title}</h3><table><tbody>${(rows || []).map(r => `<tr${r.name === D.me ? ' style="font-weight:600;color:var(--accent)"' : ''}><td class="n" style="width:2em;color:var(--muted)">${r.rank}</td><td>${esc(r.name)}${r.where ? `<div class="why">${esc(r.where)}</div>` : ''}</td><td class="n"><span class="tag">L${r.level ?? '?'}</span></td><td class="n">${r.points} pts</td></tr>`).join('')}${me && !(rows || []).some(r => r.name === D.me) ? `<tr style="font-weight:600;color:var(--accent)"><td class="n" style="width:2em">${me.rank}</td><td>${esc(D.me)}</td><td></td><td class="n">${me.points} pts</td></tr>` : ''}</tbody></table></div>`;
     const lv = (S.levels || []).filter(l => l.pct > 0 || l.n <= (S.myLevel || 1) + 1);
     const levels = `<div class="card"><h3>Levels</h3><p class="why">Share of members at each level. ${S.myLevel ? `You are level ${S.myLevel} with ${S.myPoints} points${S.nextLevelAt ? `, next level at ${S.nextLevelAt}` : ''}.` : ''}</p><table><tbody>${lv.map(l => `<tr${l.n === S.myLevel ? ' style="font-weight:600;color:var(--accent)"' : ''}><td>${esc(l.name)}</td><td style="width:50%"><div style="height:10px;background:var(--chip);border-radius:5px"><div style="height:10px;width:${Math.max(1, l.pct)}%;background:var(--s1);border-radius:5px"></div></div></td><td class="n">${l.pct}%</td><td class="why">${(l.unlocks || []).map(esc).join(', ')}</td></tr>`).join('')}</tbody></table></div>`;
-    skool = `<h2>Skool's board</h2><p class="why">Points are likes on posts and comments. Skool updated this ${S.updated ? fmt(S.updated) : ''}. Your row is highlighted.</p><div class="grid2">${sb('Last 7 days', S.d7, S.me && S.me.d7)}${sb('Last 30 days', S.d30, S.me && S.me.d30)}${sb('All time', S.all, S.me && S.me.all)}${levels}</div>`;
+    skool = `<h2>Skool's board</h2><p class="why">Points are likes on posts and comments. Skool updated this ${S.updated ? fmt(S.updated) : ''}.${D.guest ? '' : ' Your row is highlighted.'}</p><div class="grid2">${sb('Last 7 days', S.d7, S.me && S.me.d7)}${sb('Last 30 days', S.d30, S.me && S.me.d30)}${sb('All time', S.all, S.me && S.me.all)}${levels}</div>`;
   }
   m.innerHTML = `<h2>Leaderboards</h2>${skool}<h2>Ours, from posts</h2><p class="why">Computed from posts only. Skool's board also counts likes on comments, which the collector only sees in part.</p><div class="grid2">${board('Most posts, last 30 days', o.posts30)}${board('Most likes on posts, last 30 days', o.likes30)}${board('Rising: posts last 4 wks vs prior 4', o.rising, v => '+' + v)}${board('Fading', o.fading)}${board('Most likes on posts, all time', o.likesAll)}</div>`;
 }
