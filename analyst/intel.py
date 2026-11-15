@@ -27,7 +27,12 @@ SELF = re.compile(
     r"\b(i'?m an? |i am an? |i was an? |i'?ve been an? |i have been an? |years (as|in|of) |my trade|i work (as|in|for|at)|"
     r"i worked (as|in|for)|retired (from|as)|by trade|journeyman|apprentice|licensed|certified|i run (a|my|our)|i own (a|my)|"
     r"my (business|shop|company|job|career)|career (in|as)|served (in|as|with)|i build|i raise|i grow|i teach|i train|"
-    r"background in|experience (in|with)|i know how to|i can help with|i do (a lot of )?\w+ing for a living|for a living)", re.I)
+    r"background in|experience (in|with)|i know how to|i can help with|i do (a lot of )?\w+ing for a living|for a living|"
+    # past tense and "I made it" ways men describe what they know
+    r"i had (a|an|my|our) |i ran (a|an|my|our|cattle)|i'?ve run|i built|i'?ve built|i made (a|an|this|the)|i developed|i created|"
+    r"i wrote|i designed|i sold (out|my)|i raised|i'?ve raised|i farmed|i ranched|i used to (be|run|work|own)|"
+    r"for \d+ (years|yrs)|\d+ (years|yrs) (as|in|of|with|on)|my (ranch|farm|land|place|homestead|crew|unit|platoon)|"
+    r"i'?ve (done|worked|spent|been doing)|i spent \d+|i learned the hard way)", re.I)
 
 
 REC = re.compile(r"\b(i recommend|recommend(ed)?|i use|i'?ve used|i bought|i got mine|i swear by|check out|go with|best (one|brand|place|deal)|great (product|company|brand)|good (brand|company|book)|worth (it|every)|look (at|into)|get (a|an|the) \w+ from)\b", re.I)
