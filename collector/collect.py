@@ -6,8 +6,9 @@ persistent logged-in browser profile. Run once with --login to sign in.
   python collector/collect.py --login          # headed, waits for you to log in
   python collector/collect.py                  # incremental pull (headless)
   python collector/collect.py --pages 90       # full backfill of the feed
+  python collector/collect.py --fullcomments --max-detail 200   # backfill every comment, 200 posts per run
 """
-import argparse, json, os, re, sys, time, datetime as dt
+import argparse, collections, json, os, re, sys, time, datetime as dt
 from pathlib import Path
 from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
@@ -152,6 +153,7 @@ def main():
     ap.add_argument("--max-detail", type=int, default=80, help="max post pages to open for comments")
     ap.add_argument("--headed", action="store_true")
     ap.add_argument("--recomment", action="store_true", help="pull comments for posts that have none captured yet (no feed walk)")
+    ap.add_argument("--fullcomments", action="store_true", help="backfill: pull every comment for posts where fewer are stored than Skool reports (no feed walk)")
     args = ap.parse_args()
 
     state = load(DATA / "state.json", {})
@@ -198,7 +200,8 @@ def main():
 
         # --- feed pages ---
         touched = []          # post ids seen this run that need a detail fetch
-        max_pages = 0 if args.recomment else (args.pages or 40)
+        comment_only = args.recomment or args.fullcomments
+        max_pages = 0 if comment_only else (args.pages or 40)
         pg = 1
         while pg <= max_pages:
             if pg > 1:
@@ -235,11 +238,15 @@ def main():
             pg += 1
             time.sleep(1.0)
 
-        # --- comments via the API the site uses (first 25 + newest 25, with reply threads) ---
+        # --- comments via the API the site uses (every comment, 25 per call, with reply threads) ---
         group_id = dig(nd, "props", "pageProps", "currentGroup", "id") or GROUP_ID
         if args.recomment:
             have = {c["postId"] for c in comments.values()}
             touched = [i for i, p in posts.items() if p.get("comments", 0) > 0 and i not in have]
+        if args.fullcomments:
+            stored = collections.Counter(c["postId"] for c in comments.values())
+            touched = [i for i, p in posts.items() if int(p.get("comments", 0) or 0) > stored.get(i, 0)]
+            print(f"{len(touched)} posts have fewer comments stored than Skool reports")
         ordered = sorted(dict.fromkeys(touched), key=lambda i: posts[i].get("lastCommentAt") or posts[i].get("createdAt") or "", reverse=True)
         ordered = [i for i in ordered if posts[i].get("comments", 0) > 0][: args.max_detail]
 
@@ -258,28 +265,39 @@ def main():
         for n_done, pid in enumerate(ordered):
             if calls and calls % 40 == 0:
                 warm(pid)
+            # Page through every comment the way the site does: each batch of 25 returns
+            # a "last" cursor, and the next batch asks for comments created after it.
             flat = []
-            for extra in ("", "&tail=true"):
-                url = f"https://api2.skool.com/posts/{pid}/comments?group-id={group_id}&limit=25{extra}"
-                tree = None
+            cursor = None
+            for batch in range(200):
+                if calls and calls % 40 == 0:
+                    warm(pid)
+                url = f"https://api2.skool.com/posts/{pid}/comments?group-id={group_id}&limit=25"
+                if cursor:
+                    url += f"&created-gt={cursor}"
+                body = None
                 for attempt in range(2):
                     try:
                         r = page.request.get(url, timeout=30000); calls += 1
                         if r.ok:
-                            tree = r.json().get("post_tree", {}); fails = 0; break
+                            body = r.json(); fails = 0; break
                         log.setdefault("api_errors", 0); log["api_errors"] += 1; fails += 1
                         time.sleep(10); warm(pid)
                     except Exception:
                         break
                 if fails >= 6:
                     print("comments API keeps refusing; stopping comment pull for this run"); break
-                if tree is None:
-                    continue
-                if n_done == 0 and extra == "":
+                if body is None:
+                    break
+                tree = body.get("post_tree", {}) or {}
+                if n_done == 0 and batch == 0:
                     save(rawdir / "comments_api_sample.json", tree)
                 walk_api_comments(tree, pid, None, flat)
-                if posts[pid].get("comments", 0) <= 25:
+                nxt = body.get("last")
+                if len(tree.get("children") or []) < 25 or not nxt or nxt == cursor:
                     break
+                cursor = nxt
+                time.sleep(1.2)
             for c in flat:
                 if c["id"] and c["id"] not in comments:
                     c["firstSeen"] = now_iso()
@@ -307,7 +325,10 @@ def main():
     save(DATA / "snapshots" / f"{dt.datetime.now().strftime('%Y-%m-%d')}.json", snap)
 
     log["finished"] = now_iso()
-    state["last_run"] = log["finished"]
+    if comment_only:
+        log["mode"] = "comments only"   # no feed walk, so leave last_run alone for the next feed pull
+    else:
+        state["last_run"] = log["finished"]
     state.setdefault("runs", []).append(log)
     save(DATA / "posts.json", posts)
     save(DATA / "comments.json", comments)
