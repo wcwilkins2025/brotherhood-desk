@@ -390,9 +390,9 @@ function sunday(pane, I) {
   }).join('');
   const links = SUNDAY_ORDER.filter(k => posted[k]);
   const index = { title: TITLES.index + tag,
-    body: post("Brothers, every Sunday I pull together what's happening in here so the good stuff doesn't get buried. Here's this week's:",
-      // single posts first, then sections with several posts (Meetup spots) at the bottom, their lines with no gaps
-      [links.filter(k => posted[k].length === 1).map(k => L(posted[k][0].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k][0].slug))).join('\n'),
+    body: post("Brothers, every Sunday I pull together what's happening in here so the good stuff doesn't get buried.",
+      // single posts first under a bold "Here's this week's:", then sections with several posts (Meetup spots) at the bottom
+      [links.some(k => posted[k].length === 1) ? `${B("Here's this week's:")}\n` + links.filter(k => posted[k].length === 1).map(k => L(posted[k][0].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k][0].slug))).join('\n') : '',
        ...links.filter(k => posted[k].length > 1).map(k => `${B(INTEL.find(([kk]) => kk === k)[1])}\n` + posted[k].map(x => L(x.title.replace(/\s*\([^)]*\)\s*$/, ''), plink(x.slug))).join('\n'))].filter(Boolean).join('\n\n'),
       "Bookmark this one. A new one goes up every Sunday. If you're missing from a list, say so in the comments.") };
   const ageMin = Math.round((Date.now() - new Date(D.generated)) / 60000);
