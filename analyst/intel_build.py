@@ -3,7 +3,7 @@
 Called from build_desk.py. Only uses what men posted in the group themselves.
 Men in data/optout.json (handles or user ids) are left out of every people list.
 """
-import collections, datetime as dt, json, re
+import collections, datetime as dt, json, re, unicodedata
 from urllib.parse import urlparse
 
 URL = re.compile(r"https?://[^\s)\]>\"']+")
@@ -13,6 +13,12 @@ INTRO = re.compile(r"\b(intro|introduc\w*|new here|new member|just joined|glad t
                    r"hello (brothers|everyone|all)|checking in from|first post|joined (the|this))\b", re.I)
 EVENT = re.compile(r"\b(call|live|zoom|workshop|mod(ule)? ?\d|replay|event|webinar|q ?& ?a|meet ?up|stream|rsvp)\b", re.I)
 SKIP_LINK = ("skool.com", "obj://")
+# Must match TITLES in app/index.html. The desk uses them to tell which Sunday posts went up.
+SUNDAY_TITLES = {"near": "Brothers near you", "skills": "Ask a Brother: who knows what", "unanswered": "These brothers asked. Nobody answered yet.",
+                 "unwelcomed": "Say hello to our new brothers", "best": "Best answers from brothers", "resources": "Resources brothers have shared",
+                 "helpers": "Brothers who showed up for other brothers", "meetups": "Where brothers live close together", "wins": "Wins this week",
+                 "trend": "What brothers are talking about this week", "gear": "What brothers recommend", "events": "Calls and events you may have missed",
+                 "index": "This week's Brotherhood intel"}
 
 
 def _iso(s):
@@ -150,12 +156,16 @@ def build_intel(posts, comments, post_f, now, intel_raw, optout, me):
 
     # 9. Wins wall: last 14 days in wins threads and the check-ins forum
     wins = []
+    admins = {p.get("userId") for p in posts.values() if p.get("role") == 2}
     win_posts = {pid for pid, p in posts.items() if re.search(r"\bwins?\b", p.get("title") or "", re.I) or post_f.get(pid) == "F02"}
     for x in list(comments.values()) + [dict(p, postId=pid) for pid, p in posts.items()]:
         pid = x.get("postId")
         if pid not in win_posts or days(x.get("createdAt")) > 14 or not ok(x.get("userId"), x.get("handle")):
             continue
-        t = _plain(x.get("content"))
+        raw = (x.get("content") or "").lstrip()
+        if x.get("userId") in admins or raw.startswith("[@") or raw.startswith("@"):
+            continue   # admin posts and replies to another man are not wins
+        t = _plain(raw)
         if len(t) < 25:
             continue
         p = posts.get(pid, {})
@@ -199,6 +209,22 @@ def build_intel(posts, comments, post_f, now, intel_raw, optout, me):
             events.append(dict(ref(p), author=p.get("author"), text=t[:300]))
     events.sort(key=lambda e: e["date"], reverse=True)
 
-    return {"near": near, "skills": skills, "unanswered": unanswered, "best": best[:300], "resources": resources,
+    # Sunday posts: which intel posts Wiley has put up since this week's Sunday. Titles match TITLES in app/index.html.
+    local_now = now.astimezone()
+    week_of = (local_now - dt.timedelta(days=(local_now.weekday() + 1) % 7)).date()   # most recent Sunday, today if Sunday
+    start = dt.datetime.combine(week_of, dt.time(0), tzinfo=local_now.tzinfo)
+    norm = lambda s: re.sub(r"\s+", " ", unicodedata.normalize("NFKC", s or "")).strip().lower()
+    posted = {}
+    for pid, p in posts.items():
+        c = _iso(p.get("createdAt"))
+        if p.get("author") != me or not c or c < start:
+            continue
+        t = norm(p.get("title"))
+        for k, base in SUNDAY_TITLES.items():
+            if t.startswith(norm(base)) and (k not in posted or posted[k]["date"] < (p.get("createdAt") or "")[:10]):
+                posted[k] = {"slug": p.get("slug"), "title": unicodedata.normalize("NFKC", p.get("title") or ""), "date": (p.get("createdAt") or "")[:10]}
+    sunday = {"weekOf": week_of.isoformat(), "posted": posted}
+
+    return {"sunday": sunday, "near": near, "skills": skills, "unanswered": unanswered, "best": best[:300], "resources": resources,
             "helpers": helpers_board, "unwelcomed": unwelcomed, "meetups": meetups, "wins": wins[:200],
             "trend": trend, "hot": hot, "gear": gear[:400], "events": events[:60]}
