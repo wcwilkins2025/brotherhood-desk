@@ -123,11 +123,11 @@ async function boot() {
 function render() {
   const C = D.counts;
   const age = Math.round((Date.now() - new Date(D.generated)) / 60000); document.getElementById('stamp').textContent = 'pulled ' + (age < 60 ? age + ' min ago' : Math.round(age / 60) + ' h ago') + ' · refreshes hourly';
-  const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', D.posts.filter(p => p.isNew || p.newComments).length], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]];
+  const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', D.posts.filter(p => p.isNew || p.newComments).length], ['search', 'Search all', 0], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]];
   document.getElementById('nav').innerHTML = tabs.map(([k, l, n]) => `<button data-v="${k}" class="${view === k ? 'on' : ''}">${l}${n ? `<b>${n}</b>` : ''}</button>`).join('');
   document.querySelectorAll('#nav button').forEach(b => b.onclick = () => { view = b.dataset.v; ls('view', view); render(); });
   const m = document.getElementById('main');
-  ({ today, queue, mine, forums, members, boards, charts, exp })[view](m);
+  ({ today, queue, mine, forums, search, members, boards, charts, exp })[view](m);
 }
 
 function postCard(p, opts = {}) {
@@ -176,6 +176,11 @@ function queue(m) {
   m.innerHTML = listBar(m, 'Reply queue');
   sortK = 'score';
   wire(m, D.posts.filter(p => p.draft), postCard);
+}
+function search(m) {
+  m.innerHTML = listBar(m, 'Search all posts');
+  wire(m, D.posts, postCard);
+  const qi = m.querySelector('#q'); if (qi) qi.focus();
 }
 function mine(m) {
   m.innerHTML = listBar(m, 'My threads');
