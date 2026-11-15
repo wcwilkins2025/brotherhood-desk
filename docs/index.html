@@ -253,20 +253,24 @@ const fname = c => (D.forums.find(f => f.code === c) || {}).name || '';
 let intelSel = ls('intel') || 'sunday', intelQ = '', intelF = '';
 let fullAddr = !!ls('fullAddr');
 
-// Post markup used by every copy: **bold** and [text](url). Converted to Skool-ready rich text on copy.
+// Post markup, one line per line: **bold**, [text](url) inline links, "• " bullets, DIV dividers, "" for a blank line.
+// Executive format (Wiley's standard for every post): greeting and purpose, sections split by dividers with bold capital
+// headers, named items as "▸ " + bold name with one plain line and the link alone on its own line, bullet lists,
+// a bold closing question, then the sign-off. Bold only headers, names and the question.
 const L = (text, url) => url ? `[${String(text).replace(/[\[\]]/g, '')}](${url})` : String(text);
-const B = s => `**${s}**`;
+const B = s => `**${String(s).replace(/\*/g, '')}**`;
 const ubold = s => [...s].map(ch => { const c = ch.codePointAt(0);
   return c >= 65 && c <= 90 ? String.fromCodePoint(0x1D5D4 + c - 65) : c >= 97 && c <= 122 ? String.fromCodePoint(0x1D5EE + c - 97) : c >= 48 && c <= 57 ? String.fromCodePoint(0x1D7EC + c - 48) : ch; }).join('');
 const MD = /\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g;
-const GAP = '{{gap}}';   // a paragraph of just this becomes one empty line in Skool
-function toPlain(t) { return t.replaceAll(GAP, '').replace(/\*\*([^*]+)\*\*/g, (_, s) => ubold(s)).replace(MD, (_, x, u) => `${x}: ${u}`); }
-// Skool's editor turns <br> into empty paragraphs, so a block of several lines becomes a list:
-// a **heading** first line stays a paragraph, the rest become tight <li> items (<ol> when numbered "1. ").
+const DIV = '━━━━━━━━━━━━━━━━━━━━';
+const boldify = s => s.replace(/\*\*([^*]+)\*\*/g, (_, x) => ubold(x));
+function toPlain(t) { return boldify(t).replace(MD, (_, x, u) => `${x}: ${u}`); }
+// Skool's editor turns <br> into empty paragraphs, so every line is its own paragraph, runs of "• " lines become one
+// tight <ul>, and a blank line becomes one empty paragraph.
 function toHtml(t) {
   const inline = line => {
     let out = '', last = 0;
-    line = line.replace(/\*\*([^*]+)\*\*/g, (_, s) => ubold(s));
+    line = boldify(line);
     for (const m of line.matchAll(MD)) {
       out += esc(line.slice(last, m.index));
       out += fullAddr ? `${esc(m[1])}: <a href="${m[2]}">${esc(m[2])}</a>` : `<a href="${m[2]}">${esc(m[1])}</a>`;
@@ -274,15 +278,16 @@ function toHtml(t) {
     }
     return out + esc(line.slice(last)).replace(/https?:\/\/[^\s<]+/g, u => `<a href="${u}">${u}</a>`);
   };
-  return t.split(/\n{2,}/).map(par => {
-    if (par.trim() === GAP) return '<p><br></p>';
-    const lines = par.split('\n').filter(l => l.trim());
-    if (lines.length < 2) return `<p>${inline(lines[0] || '')}</p>`;
-    const head = /^\*\*.+\*\*/.test(lines[0]) ? `<p>${inline(lines.shift())}</p>` : '';
-    const numbered = lines.every(l => /^\d+\.\s/.test(l));
-    const items = lines.map(l => `<li><p>${inline(numbered ? l.replace(/^\d+\.\s/, '') : l)}</p></li>`).join('');
-    return head + (numbered ? `<ol>${items}</ol>` : `<ul>${items}</ul>`);
-  }).join('');
+  const out = []; let list = [];
+  const flush = () => { if (list.length) out.push(`<ul>${list.map(l => `<li><p>${inline(l)}</p></li>`).join('')}</ul>`); list = []; };
+  t.split('\n').forEach((line, i, a) => {
+    if (line.startsWith('• ')) { list.push(line.slice(2)); return; }
+    flush();
+    if (!line.trim()) { if (i && a[i - 1].trim()) out.push('<p><br></p>'); return; }
+    out.push(`<p>${inline(line)}</p>`);
+  });
+  flush();
+  return out.join('');
 }
 function linkHtml(t) { return toHtml(t); }
 function copyRich(t, what) {
@@ -296,8 +301,25 @@ function copyText(t) { copyRich(t, 'Text'); }
 function copyTitle(t) { navigator.clipboard.writeText(ubold(t)).then(() => toast('Title copied. Paste it in the Title box.'), () => toast('Copy blocked.')); }
 const POSTS = [];   // finished posts behind the per-card copy buttons
 const postBtns = p => { const i = POSTS.push(p) - 1; return `<button onclick="copyTitle(POSTS[${i}].title)">Copy title</button><button class="pri" onclick="copyRich(POSTS[${i}].body, 'Post')">Copy post</button>`; };
-const post = (intro, body, outro) => [intro, body, outro].filter(Boolean).join('\n\n');
 const pname = (name, h) => L(name, h && prof(h));
+const visible = body => body.replace(MD, '$1').replace(/\*\*/g, '').length;
+// building blocks
+const item = (name, line, url) => ['▸ ' + B(name), ...(line ? [line] : []), ...(url ? [url] : []), ''];
+const bullets = arr => arr.map(x => '• ' + x);
+const sec = (h, lines) => ({ h, lines });
+function exec({ purpose, sections, note, question }) {
+  const out = ['Brothers,', ...[].concat(purpose)];
+  for (const s of sections) {
+    if (!s.lines || !s.lines.length) continue;
+    out.push('', DIV, '');
+    if (s.h) out.push(B(String(s.h).toUpperCase()), '');
+    out.push(...s.lines);
+  }
+  out.push('', DIV, '');
+  if (note) out.push(...[].concat(note), '');
+  out.push(B(question), '', 'Wiley');
+  return out.filter((l, i, a) => !(l === '' && a[i - 1] === '')).join('\n');   // never two blank lines in a row
+}
 function resGroups(arr) {
   const g = {}; arr.forEach(x => (g[fname(x.f) || 'Other'] ||= []).push(x));
   return Object.entries(g).sort((a, b) => b[1].length - a[1].length);
@@ -311,6 +333,8 @@ function areaGroups(arr) {
   const g = {}; arr.forEach(x => (g[x.area ? x.area + ', ' + x.state : x.state] ||= []).push(x));
   return Object.entries(g).sort((a, b) => b[1].length - a[1].length);
 }
+const manTown = x => `${pname(x.name, x.handle)}${x.town ? ', ' + x.town : ''}`;
+const snip = (t, n) => t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '...' : t;
 
 // Base titles. intel_build.py uses the same list to spot which ones Wiley posted this week. Keep them in step.
 const TITLES = { near: 'Brothers near you', skills: 'Ask a Brother: who knows what', unanswered: 'These brothers asked. Nobody answered yet.',
@@ -319,56 +343,81 @@ const TITLES = { near: 'Brothers near you', skills: 'Ask a Brother: who knows wh
   trend: 'What brothers are talking about this week', gear: 'What brothers recommend', events: 'Calls and events you may have missed',
   index: "This week's Brotherhood intel" };
 
-// Whole-list posts. full = Sunday edition (caps keep each post readable); filtered views pass their own list.
+// Whole-list posts. Sunday editions pass the full lists (caps keep each post readable); filtered views pass their own list.
 const MK = {
-  near: (arr, tag = '') => ({ title: TITLES.near + tag,
-    body: post("Want to know who lives near you? Here's where brothers said they live. Tap a name to reach out.",
-      areaGroups(arr).filter(([, v]) => v.length >= (arr.length > 150 ? 4 : 1)).slice(0, 18).map(([a, v]) => `${B(a)} (${v.length})\n` + v.slice(0, 10).map(x => `${pname(x.name, x.handle)}${x.town ? ', ' + x.town : ''}`).join('\n')).join('\n\n'),
-      "Not on the list? Drop your town in the comments and you'll be on next week's.") }),
-  skills: (arr, tag = '') => ({ title: TITLES.skills + tag,
-    body: post('Before you pay someone or guess, ask a brother. These men said they know these trades. Tap a name to reach out.',
-      skillGroups(arr).filter(([, v]) => v.men.length >= (arr.length > 150 ? 3 : 1)).slice(0, 20).map(([g, v]) => `${B(g)} (${v.men.length})\n` + v.men.slice(0, 5).map(x => `${pname(x.name, x.handle)}, ${x.skill}`).join('\n')).join('\n\n'),
-      'Know a trade and not on the list? Say so in the comments so brothers can find you.') }),
-  unanswered: (arr, tag = '') => ({ title: TITLES.unanswered + tag,
-    body: post('Brothers, these men reached out and are still waiting on a reply. If you know something, tap the post and answer him.',
-      arr.slice(0, 25).map(x => `${L(x.title, plink(x.slug))}, asked by ${pname(x.author, x.handle)}`).join('\n'), 'One reply from you could be the reason he stays. Give one today.') }),
-  unwelcomed: (arr, tag = '') => ({ title: TITLES.unwelcomed + tag,
-    body: post('These men introduced themselves and nobody has said hello yet. Take ten seconds and welcome them.',
-      arr.slice(0, 25).map(x => `${pname(x.author, x.handle)}: ${L(x.title, plink(x.slug))}`).join('\n'), 'Remember your first week here. Be the brother who answered.') }),
-  best: (arr, tag = '') => { const g = {}; arr.slice(0, 40).forEach(x => (g[fname(x.f) || 'Other'] ||= []).push(x));
-    return { title: TITLES.best + tag,
-      body: post('Some questions keep coming up. Here are the answers brothers liked most. Tap a question to read the whole thread.',
-        Object.entries(g).map(([f, v]) => `${B(f)}\n` + v.slice(0, 6).map(x => `${L(x.title, plink(x.slug))}\nBest answer: ${pname(x.answer.name, x.answer.handle)}`).join('\n\n')).join('\n\n'),
-        'Got a better answer? Add it to the thread.') }; },
-  resources: (arr, tag = '') => ({ title: TITLES.resources + tag,
-    body: post("Good material gets buried fast in here. Here are the links brothers have shared, by topic.",
-      resGroups(arr).slice(0, 8).map(([f, v]) => `${B(f)}\n` + v.slice(0, 6).map(x => `${L(x.title ? `${x.host}, from "${x.title.slice(0, 50)}"` : x.host, x.url)}${x.by && x.by.length ? ' (shared by ' + x.by.slice(0, 2).join(', ') + ')' : ''}`).join('\n')).join('\n\n'),
-      'Got a good one that is missing? Drop it below.') }),
-  helpers: (arr, tag = '') => ({ title: TITLES.helpers + tag,
-    body: post("Points don't measure this. These men answered the most brothers in the last 30 days. That's what a brotherhood looks like.",
-      arr.slice(0, 10).map((x, i) => `${i + 1}. ${pname(x.name, x.handle)}, answered ${x.men} brothers`).join('\n'),
-      "Tag one of them below and say thanks. Then go be on next month's list.") }),
-  meetups: (arr, tag = '') => ({ title: TITLES.meetups + tag,
-    body: post('Some of us live a short drive apart and never knew it. These areas have five or more brothers.',
-      arr.map(x => `${B(x.area + ', ' + x.state)} (${x.count})\n` + x.men.map(y => `${pname(y.name, y.handle)}${y.town ? ', ' + y.town : ''}`).join('\n')).join('\n\n'),
-      'Find your area and set something up. Coffee counts.') }),
-  wins: (arr, tag = '') => ({ title: TITLES.wins + tag,
-    body: post('Brothers put in the work these last two weeks. Tap in and give them a like. It matters more than you think.',
-      arr.slice(0, 15).map(x => `${pname(x.name, x.handle)}: ${x.text.slice(0, 110)}${x.text.length > 110 ? '...' : ''}${x.slug ? ' ' + L('Read it', plink(x.slug)) : ''}`).join('\n\n'),
-      'Got a win? Post it in the wins thread. Small ones count.') }),
-  trend: (trend, tag = '') => ({ title: TITLES.trend + tag,
-    body: post("Missed what's going on in here? These are the busiest discussions this week, by forum.",
-      trend.filter(t => (t.threads || []).length).slice(0, 6).map(t => `${B(fname(t.f))}\n` + t.threads.slice(0, 3).map(h => `${L(h.title, plink(h.slug))} (${h.recent} this week)`).join('\n')).join('\n\n'),
-      'Jump in where you have something to add.') }),
+  near: (arr, tag = '') => ({ title: TITLES.near + tag, body: exec({
+    purpose: "Here's where brothers said they live, so you can find the men near you. Tap a name to reach out.",
+    sections: areaGroups(arr).filter(([, v]) => v.length >= (arr.length > 150 ? 4 : 1)).slice(0, 18).map(([a, v]) => sec(`${a} (${v.length})`, bullets(v.slice(0, 10).map(manTown)))),
+    question: "Not on the list yet? Drop your town below and you'll be on next week's." }) }),
+  skills: (arr, tag = '') => ({ title: TITLES.skills + tag, body: exec({
+    purpose: 'Before you pay someone or guess, ask a brother. These men said they know these trades. Tap a name to reach out.',
+    sections: skillGroups(arr).filter(([, v]) => v.men.length >= (arr.length > 150 ? 3 : 1)).slice(0, 20).map(([g, v]) => sec(`${g} (${v.men.length})`, bullets(v.men.slice(0, 5).map(x => `${pname(x.name, x.handle)}, ${x.skill}`)))),
+    question: 'What do you know that a brother might need? Say it below so he can find you.' }) }),
+  unanswered: (arr, tag = '') => ({ title: TITLES.unanswered + tag, body: exec({
+    purpose: 'These men reached out and are still waiting on a reply. If you know something, tap the post and answer him.',
+    sections: [sec('Still waiting', arr.slice(0, 20).flatMap(x => item(x.title, `Asked by ${x.author}, ${fmt(x.date)}`, plink(x.slug))))],
+    note: 'One reply from you could be the reason he stays.',
+    question: 'Which one can you answer today?' }) }),
+  unwelcomed: (arr, tag = '') => ({ title: TITLES.unwelcomed + tag, body: exec({
+    purpose: 'These men introduced themselves and nobody has said hello yet. Take ten seconds and welcome them.',
+    sections: [sec('New brothers', arr.slice(0, 20).flatMap(x => item(x.author, x.title, plink(x.slug))))],
+    note: 'Remember your first week here.',
+    question: 'Will you be the brother who says hello?' }) }),
+  best: (arr, tag = '') => { const g = {}; arr.slice(0, 30).forEach(x => (g[fname(x.f) || 'Other'] ||= []).push(x));
+    return { title: TITLES.best + tag, body: exec({
+      purpose: 'Some questions keep coming up. Here are the answers brothers liked most. Tap a question to read the whole thread.',
+      sections: Object.entries(g).map(([f, v]) => sec(f, v.slice(0, 5).flatMap(x => item(x.title, `Best answer: ${x.answer.name}`, plink(x.slug))))),
+      question: 'Got a better answer to one of these? Add it to the thread.' }) }; },
+  resources: (arr, tag = '') => ({ title: TITLES.resources + tag, body: exec({
+    purpose: 'Good material gets buried fast in here. Here are the links brothers have shared, by topic.',
+    sections: resGroups(arr).slice(0, 6).map(([f, v]) => sec(f, v.slice(0, 5).flatMap(x => item(x.title ? snip(x.title, 60) : x.host, `${x.host}${x.by && x.by.length ? ', shared by ' + x.by.slice(0, 2).join(' and ') : ''}`, x.url)))),
+    question: 'Got a good resource that is missing? Drop it below.' }) }),
+  helpers: (arr, tag = '') => ({ title: TITLES.helpers + tag, body: exec({
+    purpose: "Points don't measure this. These men answered the most brothers in the last 30 days. That's what a brotherhood looks like.",
+    sections: [sec('Last 30 days', bullets(arr.slice(0, 10).map((x, i) => `${i + 1}. ${pname(x.name, x.handle)}, answered ${x.men} brothers`)))],
+    question: "Who showed up for you this month? Tag him below and say thanks." }) }),
+  meetups: (arr, tag = '') => ({ title: TITLES.meetups + tag, body: exec({
+    purpose: 'Some of us live a short drive apart and never knew it. These areas have five or more brothers.',
+    sections: arr.map(x => sec(`${x.area}, ${x.state} (${x.count})`, bullets(x.men.map(manTown)))),
+    question: "Who's up for coffee in your area? Coffee counts." }) }),
+  wins: (arr, tag = '') => ({ title: TITLES.wins + tag, body: exec({
+    purpose: 'Brothers put in the work these last two weeks. Tap in and give them a like. It matters more than you think.',
+    sections: [sec("This week's wins", arr.slice(0, 12).flatMap(x => item(x.name, snip(x.text, 110), x.slug && plink(x.slug))))],
+    question: "What's your win this week? Post it in the wins thread. Small ones count." }) }),
+  trend: (trend, tag = '') => ({ title: TITLES.trend + tag, body: exec({
+    purpose: "Missed what's going on in here? These are the busiest discussions this week, by forum.",
+    sections: trend.filter(t => (t.threads || []).length).slice(0, 6).map(t => sec(fname(t.f), t.threads.slice(0, 3).flatMap(h => item(h.title, `${h.recent} new comments this week`, plink(h.slug))))),
+    question: 'Where will you jump in this week?' }) }),
   gear: (arr, tag = '') => { const g = {}; arr.forEach(x => (g[x.kind] ||= []).push(x));
-    return { title: TITLES.gear + tag,
-      body: post('Before you buy, see what brothers already use. These are things men here said they use and like.',
-        Object.entries(g).map(([k, v]) => `${B(k.charAt(0).toUpperCase() + k.slice(1))}\n` + v.slice(0, 12).map(x => `${x.item}, recommended by ` + x.by.slice(0, 3).map(b => L(b.name, b.slug ? plink(b.slug) : b.handle && prof(b.handle))).join(', ')).join('\n')).join('\n\n'),
-        'Use something good that is not here? Tell us below.') }; },
-  events: (arr, tag = '') => ({ title: TITLES.events + tag,
-    body: post('In case you missed them, here are the recent calls, workshops and module drops.',
-      arr.slice(0, 12).map(x => `${fmt(x.date)}: ${L(x.title, plink(x.slug))}`).join('\n'),
-      'Turn on event reminder emails in your Skool settings so you catch the next one.') }),
+    return { title: TITLES.gear + tag, body: exec({
+      purpose: 'Before you buy, see what brothers already use. These are things men here said they use and like.',
+      sections: Object.entries(g).map(([k, v]) => sec(k, v.slice(0, 8).flatMap(x => item(x.item, `Recommended by ${x.by.slice(0, 3).map(b => b.name).join(', ')}`, x.by[0] && x.by[0].slug && plink(x.by[0].slug))))),
+      question: 'What do you use that works? Tell us below.' }) }; },
+  events: (arr, tag = '') => ({ title: TITLES.events + tag, body: exec({
+    purpose: 'In case you missed them, here are the recent calls, workshops and module drops.',
+    sections: [sec('Recent calls and drops', arr.slice(0, 10).flatMap(x => item(x.title, fmt(x.date), plink(x.slug))))],
+    note: 'Turn on event reminder emails in your Skool settings.',
+    question: "Which one will you catch next time?" }) }),
+};
+// Per-card posts on the Intel pages
+const CARD = {
+  area: (k, v) => ({ title: `Brothers in ${k}`, body: exec({ purpose: `There are ${v.length} of us in ${k}. Tap a name to reach out.`,
+    sections: [sec(k, bullets(v.map(manTown)))], note: 'Live in the area and not on the list? Drop your town below.',
+    question: "Who's in for coffee or breakfast one Saturday?" }) }),
+  skill: (g, v) => ({ title: `Need help with ${g.toLowerCase()}? Ask a brother.`, body: exec({
+    purpose: `Before you pay someone or guess, ask a brother. These men said they know ${g.toLowerCase()}.`,
+    sections: [sec(g, bullets(v.men.map(x => `${pname(x.name, x.handle)}, ${x.skill}`)))],
+    question: `Know ${g.toLowerCase()} too? Say so below so brothers can find you.` }) }),
+  best: x => ({ title: `Best answer: ${x.title}`.slice(0, 90), body: exec({
+    purpose: 'A brother asked a question, and another brother gave the answer most men liked.',
+    sections: [sec('The question', item(x.title, `Asked by ${x.asker}`, plink(x.slug))),
+      sec('The best answer', ['▸ ' + B(x.answer.name), `"${snip(x.answer.text, 500)}"`])],
+    question: 'Got the same question? Read the whole thread and add what you know.' }) }),
+  meetup: x => ({ title: `${x.area} brothers: let's meet`, body: exec({
+    purpose: `Brothers in the ${x.area} area, there are ${x.count} of us. Let's put faces to names.`,
+    sections: [sec(`${x.area}, ${x.state}`, bullets(x.men.map(manTown)))],
+    note: `Reply with the day that works and the town closest to you. Live near ${x.area} and not listed? Jump in too.`,
+    question: "Who's up for coffee or breakfast one Saturday?" }) }),
 };
 // Full list behind each Sunday post.
 const FULL = I => ({ near: I.near || [], skills: I.skills || [], unanswered: I.unanswered || [], unwelcomed: I.unwelcomed || [], best: I.best || [],
@@ -387,16 +436,17 @@ function sunday(pane, I) {
   const done = SUNDAY_ORDER.filter(k => posted[k]).length;
   const rows = SUNDAY_ORDER.map((k, i) => {
     const p = MK[k](full[k], tag), have = full[k].length, pk = posted[k];
-    return `<div class="card ${pk ? 'mine' : ''}"><div class="meta"><b>${i + 1}. ${esc(p.title)}</b>${pk ? `<span class="tag">posted ✓ ${pk.length > 1 ? pk.length + ' posts' : fmt(pk[0].date)}</span>${pk.map(x => `<a href="${plink(x.slug)}" target="skool">${esc(pk.length > 1 ? x.title : 'open')}</a>`).join(' ')}` : '<span>not posted this week</span>'}<span>${have} items · about ${p.body.replace(MD, '$1').replace(/\*\*/g, '').length.toLocaleString()} characters</span></div>
+    return `<div class="card ${pk ? 'mine' : ''}"><div class="meta"><b>${i + 1}. ${esc(p.title)}</b>${pk ? `<span class="tag">posted ✓ ${pk.length > 1 ? pk.length + ' posts' : fmt(pk[0].date)}</span>${pk.map(x => `<a href="${plink(x.slug)}" target="skool">${esc(pk.length > 1 ? x.title : 'open')}</a>`).join(' ')}` : '<span>not posted this week</span>'}<span>${have} items · about ${visible(p.body).toLocaleString()} characters</span></div>
       <div class="acts">${postBtns(p)}</div></div>`;
   }).join('');
   const links = SUNDAY_ORDER.filter(k => posted[k]);
-  const index = { title: TITLES.index + tag,
-    // opening line, gap, bold "Here's this week's:" over the single posts, gap, Meetup spots list, gap, closing line
-    body: ["Brothers, every Sunday I pull together what's happening in here so the good stuff doesn't get buried.",
-      links.some(k => posted[k].length === 1) ? `${B("Here's this week's:")}\n` + links.filter(k => posted[k].length === 1).map(k => L(posted[k][0].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k][0].slug))).join('\n') : '',
-      ...links.filter(k => posted[k].length > 1).map(k => `${B(INTEL.find(([kk]) => kk === k)[1])}\n` + posted[k].map(x => L(x.title.replace(/\s*\([^)]*\)\s*$/, ''), plink(x.slug))).join('\n')),
-      "Bookmark this one. A new one goes up every Sunday. If you're missing from a list, say so in the comments."].filter(Boolean).join(`\n\n${GAP}\n\n`) };
+  const clean = t => t.replace(/\s*\([^)]*\)\s*$/, '');
+  const index = { title: TITLES.index + tag, body: exec({
+    purpose: "Every Sunday I pull together what's happening in here so the good stuff doesn't get buried.",
+    sections: [sec("Here's this week's", bullets(links.filter(k => posted[k].length === 1).map(k => L(clean(posted[k][0].title), plink(posted[k][0].slug))))),
+      ...links.filter(k => posted[k].length > 1).map(k => sec(INTEL.find(([kk]) => kk === k)[1], bullets(posted[k].map(x => L(clean(x.title), plink(x.slug))))))],
+    note: 'Bookmark this one. A new one goes up every Sunday.',
+    question: "Missing from a list? Say so in the comments." }) };
   const ageMin = Math.round((Date.now() - new Date(D.generated)) / 60000);
   const stale = ageMin > 15 ? `<div class="card new"><b>This page's data is ${ageMin < 120 ? ageMin + ' minutes' : Math.round(ageMin / 60) + ' hours'} old.</b> Posts you made since then are not counted, and the index below leaves them out. <span class="acts" style="display:inline-flex;margin:0 0 0 8px"><button class="pri" onclick="location.reload()">Reload</button></span></div>` : '';
   pane.innerHTML = `${stale}<h2>Sunday posts${tag ? ' · week of ' + fmt(S.weekOf) : ''}</h2>
@@ -449,14 +499,14 @@ function intel(m) {
     pane.innerHTML = head('Brothers near you', 'Where each man said he lives, town level at most. Pick a state or search a town or area. Each area card copies as its own post.', sel(states, 'All states'));
     go(() => (I.near || []).filter(x => (!intelF || x.state === intelF) && hit(x.name, x.town, x.state, x.area)),
       arr => areaGroups(arr).map(([k, v]) => `<div class="card"><h4 style="margin:0 0 6px">${esc(k)} <span class="why">${v.length}</span></h4>${v.map(x => `<div>${who(x.name, x.handle)} <span class="why">${esc(x.town)}</span></div>`).join('')}
-          ${cardActs({ title: `Brothers in ${k}`, body: post(`Brothers, there are ${v.length} of us in ${k}. Tap a name to reach out, or reply here and let's get together.`, v.map(x => `${pname(x.name, x.handle)}${x.town ? ', ' + x.town : ''}`).join('\n'), 'Live in the area and not on the list? Drop your town below.') })}</div>`).join(''));
+          ${cardActs(CARD.area(k, v))}</div>`).join(''));
 
   } else if (S === 'skills') {
     const cats = [...new Set((I.skills || []).map(x => x.cat))].sort();
     pane.innerHTML = head('Ask a brother', 'Skills men said they have, grouped by trade, in their own words. Each group copies as its own post.', sel(cats, 'All fields'));
     go(() => (I.skills || []).filter(x => (!intelF || x.cat === intelF) && hit(x.name, x.skill, x.group, x.cat, x.q)),
       arr => skillGroups(arr).map(([g, v]) => `<div class="card"><h4 style="margin:0 0 6px">${esc(g)} <span class="why">${v.men.length} ${v.men.length === 1 ? 'man' : 'men'} · ${esc(v.cat)}</span></h4>${v.men.map(x => `<div class="cmt">${who(x.name, x.handle)}<span>${esc(x.skill)}</span><div class="why" style="margin:0">"${esc(x.q)}"${x.slug ? ` · <a href="${plink(x.slug)}" target="skool">where he said it</a>` : ''}</div></div>`).join('')}
-        ${cardActs({ title: `Need help with ${g.toLowerCase()}? Ask a brother.`, body: post(`Before you pay someone or guess, ask a brother. These men said they know ${g.toLowerCase()}:`, v.men.map(x => `${pname(x.name, x.handle)}, ${x.skill}`).join('\n'), `Know ${g.toLowerCase()} and not listed? Say so below so brothers can find you.`) })}</div>`).join(''));
+        ${cardActs(CARD.skill(g, v))}</div>`).join(''));
 
   } else if (S === 'unanswered' || S === 'unwelcomed') {
     const un = S === 'unanswered', list = I[S] || [];
@@ -470,7 +520,7 @@ function intel(m) {
     pane.innerHTML = head('Best answers', 'Questions men asked, with the most-liked reply from another brother. Struggles posts are left out.', sel(fs, 'All forums', fname));
     go(() => (I.best || []).filter(x => (!intelF || x.f === intelF) && hit(x.title, x.asker, x.answer.name, x.answer.text)),
       arr => arr.slice(0, 150).map(x => `<div class="card"><p class="ttl"><a href="${plink(x.slug)}" target="skool">${esc(x.title)}</a></p><div class="meta"><span>asked by ${esc(x.asker)}</span><span>${fmt(x.date)}</span>${x.f ? `<span class="tag">${esc(fname(x.f))}</span>` : ''}</div><div class="cmt">${who(x.answer.name, x.answer.handle)} <span>${x.answer.likes} likes</span><div>${esc(x.answer.text)}</div></div>
-        ${cardActs({ title: `Best answer: ${x.title}`.slice(0, 90), body: post(`A brother asked: ${L(x.title, plink(x.slug))}`, `${pname(x.answer.name, x.answer.handle)} gave the answer brothers liked most:\n\n"${x.answer.text.slice(0, 500)}${x.answer.text.length > 500 ? '...' : ''}"`, 'Worth a read if you have the same question.') })}</div>`).join(''));
+        ${cardActs(CARD.best(x))}</div>`).join(''));
 
   } else if (S === 'resources') {
     const kinds = [...new Set((I.resources || []).map(x => x.kind))].sort();
@@ -489,7 +539,7 @@ function intel(m) {
     pane.innerHTML = head('Meetup spots', 'Areas where five or more men said they live. Each card copies as its own meetup post.');
     go(() => (I.meetups || []).filter(x => hit(x.area, x.state, x.men.map(y => y.name + ' ' + y.town).join(' '))),
       arr => arr.map(x => `<div class="card"><h4 style="margin:0 0 6px">${esc(x.area)}, ${esc(x.state)} <span class="why">${x.count} men</span></h4>${x.men.map(y => `<div>${who(y.name, y.handle)} <span class="why">${esc(y.town)}</span></div>`).join('')}
-        ${cardActs({ title: `${x.area} brothers: let's meet`, body: post(`Brothers in the ${x.area} area, there are ${x.count} of us. Who's up for coffee or breakfast one Saturday?`, x.men.map(y => `${pname(y.name, y.handle)}${y.town ? ', ' + y.town : ''}`).join('\n'), `Reply with the day that works and the town closest to you. If you live near ${x.area} and aren't listed, jump in too.`) })}</div>`).join(''));
+        ${cardActs(CARD.meetup(x))}</div>`).join(''));
 
   } else if (S === 'wins') {
     pane.innerHTML = head('Wins wall', 'Wins and check-ins from the last 14 days.');
