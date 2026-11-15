@@ -58,7 +58,8 @@ def build_intel(posts, comments, post_f, now, intel_raw, optout, me):
             if k in seen:
                 continue
             seen.add(k)
-            skills.append({"name": v.get("name"), "handle": v.get("handle"), "skill": s["skill"], "cat": s["cat"], "q": s.get("q", ""), "slug": p.get("slug")})
+            skills.append({"name": v.get("name"), "handle": v.get("handle"), "skill": s["skill"], "cat": s["cat"], "q": s.get("q", ""), "slug": p.get("slug"),
+                           "group": (intel_raw.get("skillmap") or {}).get(s["skill"]) or s["skill"].title()})
         for r in v.get("r") or []:
             picks.append({"name": v.get("name"), "handle": v.get("handle"), "item": r["item"], "kind": r.get("kind", "other"), "q": r.get("q", ""), "slug": p.get("slug")})
     skills.sort(key=lambda x: (x["cat"], x["skill"].lower()))

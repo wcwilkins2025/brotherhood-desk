@@ -112,6 +112,18 @@ Texts:
 """
 
 
+GROUP_PROMPT = """Below are skills men listed about themselves on a forum. Give each one a GROUP: the plain, common name
+of the trade or field, 1 to 3 words, so men with the same skill land together.
+- Merge synonyms, ranks and specialties: "Army infantry", "US Army veteran", "Army medic" -> "Army".
+  "ER nurse", "RN", "registered nurse" -> "Nursing". "underwater welder", "welding" -> "Welding".
+  "diesel mechanic", "auto mechanic" -> "Mechanic". "cattle rancher", "ran cattle" -> "Cattle and ranching".
+- Use the military branch for service: Army, Navy, Marines, Air Force, Coast Guard, National Guard.
+- Keep groups broad enough that several men could share one, but not so broad they lose meaning.
+
+Return ONLY a JSON array: [{"s": "<skill exactly as given>", "g": "<group>"}] with one entry per skill.
+"""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=400, help="max texts to read for skills this run")
@@ -206,6 +218,23 @@ def run(args):
             intel["skills"][tid] = {"v": 2, "u": uid, "name": name, "handle": handle, "post": pid, "s": found, "r": recs}
         save("intel.json", intel)
         print(f"  read {min(i + 30, len(todo))}/{len(todo)}")
+
+    # ---------- skill groups: one plain name per trade so the desk can group men together ----------
+    smap = intel.setdefault("skillmap", {})
+    names = sorted({s["skill"] for v in intel["skills"].values() for s in v.get("s") or []} - set(smap))
+    print(f"skill groups: {len(names)} skills to group")
+    known = sorted(set(smap.values()))
+    for i in range(0, len(names), 150):
+        chunk = names[i:i + 150]
+        res = ask(GROUP_PROMPT + ("\nGroups already in use, reuse these when they fit: " + "; ".join(known) + "\n" if known else "") +
+                  "\nSkills:\n" + "\n".join(json.dumps(n, ensure_ascii=False) for n in chunk))
+        if res is None:
+            continue
+        for r in res:
+            if isinstance(r, dict) and r.get("s") in chunk and r.get("g"):
+                smap[r["s"]] = r["g"].strip()
+        known = sorted(set(smap.values()))
+        save("intel.json", intel)
 
     intel["optout"] = sorted(opt)
     save("intel.json", intel)
