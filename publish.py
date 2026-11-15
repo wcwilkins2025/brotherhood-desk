@@ -16,14 +16,21 @@ PASS = env.get("DESK_PASSPHRASE")
 if not PASS:
     print("DESK_PASSPHRASE missing in .env"); sys.exit(1)
 ITER = 200000
+# Extra passphrases (comma-separated), e.g. one to share with Dallas. Remove one from .env and republish to cut that access.
+GUESTS = [p.strip() for p in env.get("DESK_GUEST_PASSPHRASE", "").split(",") if p.strip()]
 
 
 def encrypt(plain: bytes) -> dict:
-    salt, iv = os.urandom(16), os.urandom(12)
-    key = hashlib.pbkdf2_hmac("sha256", PASS.encode("utf-8"), salt, ITER, dklen=32)
-    ct = AESGCM(key).encrypt(iv, plain, None)
+    """Envelope encryption: one random data key encrypts the desk; each passphrase unlocks a wrapped copy of that key."""
     b = lambda x: base64.b64encode(x).decode()
-    return {"enc": True, "iter": ITER, "salt": b(salt), "iv": b(iv), "ct": b(ct)}
+    data_key, iv = os.urandom(32), os.urandom(12)
+    ct = AESGCM(data_key).encrypt(iv, plain, None)
+    keys = []
+    for pw in [PASS] + GUESTS:
+        salt, kiv = os.urandom(16), os.urandom(12)
+        kek = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, ITER, dklen=32)
+        keys.append({"salt": b(salt), "iv": b(kiv), "wk": b(AESGCM(kek).encrypt(kiv, data_key, None))})
+    return {"enc": True, "v": 2, "iter": ITER, "iv": b(iv), "ct": b(ct), "keys": keys}
 
 
 ap = argparse.ArgumentParser(); ap.add_argument("--local", action="store_true"); args = ap.parse_args()
