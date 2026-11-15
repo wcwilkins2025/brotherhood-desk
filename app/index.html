@@ -384,7 +384,9 @@ function sunday(pane, I) {
       links.map(k => posted[k].length === 1 ? L(posted[k][0].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k][0].slug))
         : `${B(INTEL.find(([kk]) => kk === k)[1])}\n` + posted[k].map(x => L(x.title.replace(/\s*\([^)]*\)\s*$/, ''), plink(x.slug))).join('\n')).join('\n\n'),
       "Bookmark this one. A new one goes up every Sunday. If you're missing from a list, say so in the comments.") };
-  pane.innerHTML = `<h2>Sunday posts${tag ? ' · week of ' + fmt(S.weekOf) : ''}</h2>
+  const ageMin = Math.round((Date.now() - new Date(D.generated)) / 60000);
+  const stale = ageMin > 15 ? `<div class="card new"><b>This page's data is ${ageMin < 120 ? ageMin + ' minutes' : Math.round(ageMin / 60) + ' hours'} old.</b> Posts you made since then are not counted, and the index below leaves them out. <span class="acts" style="display:inline-flex;margin:0 0 0 8px"><button class="pri" onclick="location.reload()">Reload</button></span></div>` : '';
+  pane.innerHTML = `${stale}<h2>Sunday posts${tag ? ' · week of ' + fmt(S.weekOf) : ''}</h2>
     <p class="why">Post these in order. For each one, Copy title goes in Skool's Title box and Copy post goes in the body. The desk spots each one you post within the hour. Post the index last, once the posts you want in it show ✓.</p>
     <div class="tiles"><div class="tile"><div class="v">${done}/12</div><div class="l">posted this week</div></div><div class="tile"><div class="v">${fmt(I.generated || D.generated)}</div><div class="l">lists refreshed</div></div></div>
     ${rows}
