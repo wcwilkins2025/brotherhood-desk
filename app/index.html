@@ -381,7 +381,8 @@ function sunday(pane, I) {
   const links = SUNDAY_ORDER.filter(k => posted[k]);
   const index = { title: TITLES.index + tag,
     body: post("Brothers, every Sunday I pull together what's happening in here so the good stuff doesn't get buried. Here's this week's:",
-      links.map(k => posted[k].length === 1 ? L(posted[k][0].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k][0].slug))
+      // single posts first, then sections with several posts (Meetup spots) at the bottom, their lines with no gaps
+      [...links.filter(k => posted[k].length === 1), ...links.filter(k => posted[k].length > 1)].map(k => posted[k].length === 1 ? L(posted[k][0].title.replace(/\s*\([^)]*\)\s*$/, ''), plink(posted[k][0].slug))
         : `${B(INTEL.find(([kk]) => kk === k)[1])}\n` + posted[k].map(x => L(x.title.replace(/\s*\([^)]*\)\s*$/, ''), plink(x.slug))).join('\n')).join('\n\n'),
       "Bookmark this one. A new one goes up every Sunday. If you're missing from a list, say so in the comments.") };
   const ageMin = Math.round((Date.now() - new Date(D.generated)) / 60000);
