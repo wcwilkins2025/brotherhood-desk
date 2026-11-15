@@ -175,8 +175,14 @@ def build_intel(posts, comments, post_f, now, intel_raw, optout, me):
         elif d <= 35:
             prev[f] += 1
     trend = [{"f": f, "week": wk[f], "avg": round(prev[f] / 4, 1)} for f in set(wk) | set(prev)]
+    week_by_post = collections.Counter()
+    for x in list(comments.values()) + [dict(p, postId=pid) for pid, p in posts.items()]:
+        if days(x.get("createdAt")) <= 7:
+            week_by_post[x.get("postId")] += 1
     for t in trend:
         t["change"] = round(t["week"] - t["avg"], 1)
+        top = sorted([pid for pid in week_by_post if post_f.get(pid) == t["f"] and pid in posts], key=lambda pid: -week_by_post[pid])[:5]
+        t["threads"] = [dict(ref(posts[pid]), author=posts[pid].get("author"), recent=week_by_post[pid]) for pid in top]
     trend.sort(key=lambda t: -t["week"])
     hot = sorted([dict(ref(p), author=p.get("author"), f=post_f.get(pid),
                        recent=sum(1 for c in by_post.get(pid, []) if days(c.get("createdAt")) <= 7))
