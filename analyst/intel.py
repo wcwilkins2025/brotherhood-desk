@@ -9,7 +9,7 @@ Men listed in data/optout.json (handles or user ids) are left out of everything.
   python analyst/intel.py              # incremental, capped per run
   python analyst/intel.py --limit 2000 # bigger first pass
 """
-import argparse, datetime as dt, hashlib, json, re, subprocess, sys
+import argparse, datetime as dt, hashlib, json, re, subprocess, sys, unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -152,31 +152,43 @@ def run(args):
     opt = set(load("optout.json", []))
 
     # ---------- locations ----------
-    loc_thread = {pid for pid, p in posts.items() if (p.get("slug") or "").startswith("drop-your-location")}
+    ME = "Wiley Wilkins"
+    # Location threads: the "Drop your location" thread plus Wiley's own location posts (Brothers near you, the
+    # area meetup posts), where men answer with their town.
+    LOCPOST = re.compile(r"brothers near you|brothers: let's meet|brothers in the .+ area|where brothers live|drop your (town|location)", re.I)
+    loc_thread = {pid for pid, p in posts.items() if (p.get("slug") or "").startswith("drop-your-location")
+                  or (p.get("author") == ME and LOCPOST.search(unicodedata.normalize("NFKC", p.get("title") or "")))}
+    my_posts = {pid for pid, p in posts.items() if p.get("author") == ME}
+    my_comments = {cid for cid, c in comments.items() if c.get("author") == ME}
     NEAR = re.compile(r"\b(any(one|body)? (here )?(from|in|near|around)|checking in from|brothers? in|locals?|near me|in my area)\b", re.I)
     men = {}
-    for x in list(posts.values()) + list(comments.values()):
+    for x in sorted(list(posts.values()) + list(comments.values()), key=lambda x: x.get("createdAt") or ""):
         uid = x.get("userId")
         if not uid:
             continue
-        m = men.setdefault(uid, {"name": x.get("author", ""), "handle": x.get("handle", ""), "profile": "", "said": []})
+        m = men.setdefault(uid, {"name": x.get("author", ""), "handle": x.get("handle", ""), "profile": "", "said": [], "short": []})
         if x.get("location"):
             m["profile"] = x["location"]
         text = clean(((x.get("title") or "") + " " + (x.get("content") or "")) if "title" in x else x.get("content"))
         in_thread = x.get("postId") in loc_thread or x.get("id") in loc_thread
         if text and (in_thread or (NEAR.search(text) and len(text) < 400)):
             m["said"].append(text[:300])
+        # short answers on Wiley's posts or to his comments ("Where are you located?" -> "Chino Valley Az")
+        elif text and "title" not in x and x.get("author") != ME and len(text) < 150 \
+                and (x.get("postId") in my_posts or x.get("parentId") in my_comments):
+            m["short"].append(re.sub(r"^@?[A-Z][\w.'-]+( [A-Z][\w.'-]+)?\s+", "", text) if text.startswith("@") else text)
     todo = []
     for uid, m in men.items():
+        m["said"] = m["said"][-4:] + m["short"][-4:]
         if not m["profile"] and not m["said"]:
             continue
-        key = h(m["profile"] + "|" + "|".join(m["said"][-4:]))
+        key = h(m["profile"] + "|" + "|".join(m["said"]))
         if intel["loc"].get(uid, {}).get("key") != key:
             todo.append((uid, m, key))
     print(f"locations: {len(todo)} men to read")
     for i in range(0, len(todo), 60):
         chunk = todo[i:i + 60]
-        body = "\n".join(json.dumps({"id": uid, "profile": m["profile"], "wrote": m["said"][-4:]}, ensure_ascii=False) for uid, m, _ in chunk)
+        body = "\n".join(json.dumps({"id": uid, "profile": m["profile"], "wrote": m["said"]}, ensure_ascii=False) for uid, m, _ in chunk)
         res = ask(LOC_PROMPT + body)
         if res is None:
             continue
