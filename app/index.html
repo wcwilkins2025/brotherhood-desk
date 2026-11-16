@@ -199,6 +199,8 @@ function today(m) {
 // Reply queue filters. Status: needs a reply (not sent, not dismissed, not already answered on Skool), sent, dismissed, all.
 // Age: hide posts older than N days (0 = any age). Both remembered in this browser.
 let qStatus = ls('qStatus') || 'needs', qDays = ls('qDays') ?? 14;
+let fStatus = ls('fStatus') || 'all', fDays = ls('fDays') ?? 0;   // the same filters on Forums
+const AGE_OPTS = [[3, 'Last 3 days'], [7, 'Last 7 days'], [14, 'Last 14 days'], [30, 'Last 30 days'], [60, 'Last 60 days'], [0, 'Any age']];
 function queueState(p) { return done.has(p.id) ? 'sent' : dismissed.has(p.id) ? 'dismissed' : p.iReplied ? 'replied' : 'needs'; }
 function queue(m) {
   const all = D.posts.filter(p => p.draft);
@@ -227,10 +229,21 @@ function forums(m) {
   const counts = {}, fresh = {}; D.posts.forEach(p => { counts[p.f] = (counts[p.f] || 0) + 1; if (p.isNew || p.newComments) fresh[p.f] = (fresh[p.f] || 0) + 1; });
   const fl = D.forums.filter(f => counts[f.code]);
   if (!forumSel) forumSel = fl[0].code;
-  m.innerHTML = `<div class="row"><div class="rail">${fl.map(f => `<button data-f="${f.code}" class="${forumSel === f.code ? 'on' : ''}">${esc(f.name)}<span>${fresh[f.code] ? `<b class="nw">${fresh[f.code]} new</b> · ` : ''}${counts[f.code]}</span></button>`).join('')}</div><div id="pane">${listBar(m, (fl.find(f => f.code === forumSel) || {}).name || '')}</div></div>`;
+  // same status and age filters as the Reply queue; "All posts" also shows posts with no draft
+  const cutoff = fDays ? Date.now() - fDays * 86400000 : 0;
+  const inAge = D.posts.filter(p => p.f === forumSel && (!cutoff || new Date(p.ts || p.date) >= cutoff));
+  const keep = (p, s) => s === 'all' || (p.draft && (queueState(p) === s || (s === 'sent' && queueState(p) === 'replied')));
+  const opts = [['all', 'All posts'], ['needs', 'Needs a reply'], ['sent', 'Sent or replied'], ['dismissed', 'Dismissed']];
+  const extra = D.guest ? `<select id="fd">${AGE_OPTS.map(([v, l]) => `<option value="${v}" ${+fDays === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+    : `<select id="fs">${opts.map(([k, l]) => `<option value="${k}" ${fStatus === k ? 'selected' : ''}>${l} (${inAge.filter(p => keep(p, k)).length})</option>`).join('')}</select>
+    <select id="fd">${AGE_OPTS.map(([v, l]) => `<option value="${v}" ${+fDays === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  m.innerHTML = `<div class="row"><div class="rail">${fl.map(f => `<button data-f="${f.code}" class="${forumSel === f.code ? 'on' : ''}">${esc(f.name)}<span>${fresh[f.code] ? `<b class="nw">${fresh[f.code]} new</b> · ` : ''}${counts[f.code]}</span></button>`).join('')}</div><div id="pane">${listBar(m, (fl.find(f => f.code === forumSel) || {}).name || '', extra)}</div></div>`;
   m.querySelectorAll('.rail button').forEach(b => b.onclick = () => { forumSel = b.dataset.f; ls('forum', forumSel); forums(m); });
+  const fs = m.querySelector('#fs'), fd = m.querySelector('#fd');
+  if (fs) fs.onchange = e => { fStatus = e.target.value; ls('fStatus', fStatus); forums(m); };
+  if (fd) fd.onchange = e => { fDays = +e.target.value; ls('fDays', fDays); forums(m); };
   const f = fl.find(x => x.code === forumSel) || {};
-  wire(m, D.posts.filter(p => p.f === forumSel), postCard);
+  wire(m, inAge.filter(p => keep(p, D.guest ? 'all' : fStatus)), postCard);
   const pane = m.querySelector('#pane h2'); if (pane && f.desc) pane.insertAdjacentHTML('afterend', `<p class="why">${esc(f.desc)}</p>`);
 }
 const spark = w => `<span class="spark">${w.map(v => `<i style="height:${Math.max(1, v / Math.max(1, ...w) * 18)}px"></i>`).join('')}</span>`;
