@@ -142,7 +142,7 @@ function render() {
   const C = D.counts;
   const age = Math.round((Date.now() - new Date(D.generated)) / 60000); document.getElementById('stamp').textContent = 'pulled ' + (age < 60 ? age + ' min ago' : Math.round(age / 60) + ' h ago') + ' · refreshes hourly';
   const OWNER_ONLY = ['queue', 'mine', 'exp'];   // Wiley's drafts, threads and bump experiment: never in the guest view
-  const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', D.posts.filter(p => p.isNew || p.newComments).length], ['search', 'Search all', 0], ['intel', 'Intel', 0], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]]
+  const tabs = [['today', 'Today', C.new], ['queue', 'Reply queue', C.queue], ['mine', 'My threads', C.myNewComments], ['forums', 'Forums', D.posts.filter(isFresh).length], ['search', 'Search all', 0], ['intel', 'Intel', 0], ['members', 'Members', 0], ['boards', 'Leaderboards', 0], ['charts', 'Charts', 0], ['exp', 'Experiment', 0]]
     .filter(([k]) => !(D.guest && OWNER_ONLY.includes(k)));
   if (!tabs.some(([k]) => k === view)) view = 'today';
   document.getElementById('nav').innerHTML = tabs.map(([k, l, n]) => `<button data-v="${k}" class="${view === k ? 'on' : ''}">${l}${n ? `<b>${n}</b>` : ''}</button>`).join('');
@@ -157,9 +157,10 @@ function postCard(p, opts = {}) {
   const url = p.slug ? `${GROUP}/${p.slug}` : GROUP;
   const isDone = done.has(p.id);
   const cm = p.commentList || [];
-  return `<article class="card ${p.isNew ? 'new' : ''} ${p.mine ? 'mine' : ''}" data-id="${p.id}">
+  const fr = isFresh(p);
+  return `<article class="card ${fr ? 'new' : ''} ${p.mine ? 'mine' : ''}" data-id="${p.id}">
     <p class="ttl" onclick="toggleTxt(this)">${esc(p.title || '(untitled)')}</p>
-    <div class="meta"><b>${esc(p.author)}</b><span>${fmt(p.date)}</span><span>${p.likes} likes</span><span>${p.comments} comments</span>${p.newComments ? `<span class="nw">${p.newComments} new</span>` : ''}${p.isNew ? '<span class="nw">new post</span>' : ''}${f.name ? `<span class="tag">${esc(f.name)}${t.name ? ' · ' + esc(t.name) : ''}</span>` : ''}${p.pinned ? '<span class="tag">pinned</span>' : ''}</div>
+    <div class="meta"><b>${esc(p.author)}</b><span>${fmt(p.date)}</span><span>${p.likes} likes</span><span>${p.comments} comments</span>${fr && p.newComments ? `<span class="nw">${p.newComments} new</span>` : ''}${fr && p.isNew ? '<span class="nw">new post</span>' : ''}${f.name ? `<span class="tag">${esc(f.name)}${t.name ? ' · ' + esc(t.name) : ''}</span>` : ''}${p.pinned ? '<span class="tag">pinned</span>' : ''}</div>
     <div class="txt clip">${esc(p.text)}</div><button class="more" onclick="toggleTxt(this)">more</button>
     ${p.draft && dismissed.has(p.id) && view !== 'queue' ? `<div class="acts"><a href="${url}" target="skool" rel="noopener">Open post</a><button class="pill on" onclick="dismiss('${p.id}')">Draft dismissed · undo</button></div>`
     : p.draft ? `<div class="draft"><h4>Draft reply · score ${p.score}${isDone ? ' · sent' : ''}</h4><p class="why">${esc(p.reason)}</p>${(p.flags || []).length ? `<p class="why" style="color:var(--warn)">Check before pasting: ${p.flags.map(esc).join(', ')}.</p>` : ''}<textarea id="ta-${p.id}">${esc(p.draft)}</textarea>
@@ -171,6 +172,36 @@ function postCard(p, opts = {}) {
 function toggleTxt(el) { const card = el.closest('.card'); const t = card.querySelector('.txt'); t.classList.toggle('clip'); card.querySelector('.more').textContent = t.classList.contains('clip') ? 'more' : 'less'; }
 function copyDraft(id) { const v = document.getElementById('ta-' + id).value; navigator.clipboard.writeText(v).then(() => toast('Reply copied. Paste it in Skool.'), () => toast('Copy blocked. Select the text and copy.')); }
 function markDone(id) { if (done.has(id)) done.delete(id); else done.add(id); ls('done', [...done]); render(); }
+// Seen: a new post (or one with new comments) stops showing as new once its card has been on screen ~1.5 s.
+// Stored per post against its latest activity, so a later comment makes it new again. Kept in this browser.
+const seen = ls('seen') || {};
+const sig = p => p.lastCommentAt || p.ts || '';
+const isFresh = p => !!(p.isNew || p.newComments) && seen[p.id] !== sig(p);
+function markSeen(id) {
+  const p = D.posts.find(x => x.id === id); if (!p || !isFresh(p)) return;
+  seen[id] = sig(p);
+  for (const k of Object.keys(seen)) { const q = D.posts.find(x => x.id === k); if (!q || !(q.isNew || q.newComments)) delete seen[k]; }
+  ls('seen', seen);
+  const card = document.querySelector(`.card[data-id="${id}"]`);
+  if (card) { card.classList.remove('new'); card.querySelectorAll('.meta .nw').forEach(e => e.remove()); }
+  refreshNewCounts();
+}
+function refreshNewCounts() {   // update the Forums tab and forum rail counts without redrawing the list
+  const nb = document.querySelector('#nav button[data-v="forums"]');
+  if (nb) { const n = D.posts.filter(isFresh).length; nb.innerHTML = 'Forums' + (n ? `<b>${n}</b>` : ''); }
+  document.querySelectorAll('.rail button[data-f]').forEach(b => {
+    const n = D.posts.filter(p => p.f === b.dataset.f && isFresh(p)).length, span = b.querySelector('span'), nw = span && span.querySelector('.nw');
+    if (nw && !n) { const t = nw.nextSibling; if (t && t.nodeType === 3) t.textContent = t.textContent.replace(/^\s*·\s*/, ''); nw.remove(); }
+    else if (nw) nw.textContent = n + ' new';
+  });
+}
+const seenTimers = new Map();
+const seenObs = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => {
+  const id = e.target.dataset.id;
+  if (e.isIntersecting) { if (!seenTimers.has(id)) seenTimers.set(id, setTimeout(() => { seenTimers.delete(id); markSeen(id); }, 1500)); }
+  else { clearTimeout(seenTimers.get(id)); seenTimers.delete(id); }
+}), { threshold: 0.6 }) : null;
+function watchSeen(root) { if (seenObs) root.querySelectorAll('.card.new[data-id]').forEach(c => seenObs.observe(c)); }
 const dismissed = new Set(ls('dismissed') || []);
 function dismiss(id) { if (dismissed.has(id)) dismissed.delete(id); else dismissed.add(id); ls('dismissed', [...dismissed]); toast(dismissed.has(id) ? 'Dismissed.' : 'Back in the queue.'); render(); }
 
@@ -184,9 +215,10 @@ function wire(m, items, renderFn) {
     q = qi ? qi.value.trim().toLowerCase() : ''; sortK = si ? si.value : 'ts';
     let arr = items.filter(p => !q || [p.title, p.author, p.text].join(' ').toLowerCase().includes(q));
     const key = { ts: p => p.ts || '', last: p => p.lastCommentAt || p.ts || '', likes: p => p.likes, comments: p => p.comments, score: p => p.score }[sortK];
-    arr.sort((a, b) => ((b.isNew || b.newComments) ? 1 : 0) - ((a.isNew || a.newComments) ? 1 : 0) || (key(b) > key(a) ? 1 : key(b) < key(a) ? -1 : 0));
+    arr.sort((a, b) => (isFresh(b) ? 1 : 0) - (isFresh(a) ? 1 : 0) || (key(b) > key(a) ? 1 : key(b) < key(a) ? -1 : 0));
     m.querySelector('#cnt').textContent = arr.length + ' posts';
     m.querySelector('#list').innerHTML = arr.slice(0, 150).map(renderFn).join('') || '<div class="empty">Nothing here.</div>';
+    watchSeen(m.querySelector('#list'));
   };
   if (qi) qi.oninput = run; if (si) si.onchange = run; run();
 }
@@ -245,7 +277,7 @@ function mine(m) {
   wire(m, fb.items, postCard);
 }
 function forums(m) {
-  const counts = {}, fresh = {}; D.posts.forEach(p => { counts[p.f] = (counts[p.f] || 0) + 1; if (p.isNew || p.newComments) fresh[p.f] = (fresh[p.f] || 0) + 1; });
+  const counts = {}, fresh = {}; D.posts.forEach(p => { counts[p.f] = (counts[p.f] || 0) + 1; if (isFresh(p)) fresh[p.f] = (fresh[p.f] || 0) + 1; });
   const fl = D.forums.filter(f => counts[f.code]);
   if (!forumSel) forumSel = fl[0].code;
   const fb = filterBar('forums', D.posts.filter(p => p.f === forumSel), () => forums(m));
