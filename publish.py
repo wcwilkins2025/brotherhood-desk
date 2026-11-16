@@ -19,7 +19,7 @@ ITER = 200000
 # Guest passphrases (comma-separated), e.g. the one shared with Dallas. They open ONLY data/guest.json, a copy with
 # Wiley's drafts, threads, experiment and own ranks stripped. Remove one from .env and republish to cut that access.
 GUESTS = [p.strip() for p in env.get("DESK_GUEST_PASSPHRASE", "").split(",") if p.strip()]
-DRAFT_KEYS = ("draft", "score", "reason", "kind", "flags", "iReplied")
+DRAFT_KEYS = ("draft", "score", "reason", "kind", "flags", "iReplied", "awaitingMe")
 
 
 def encrypt(plain: bytes, passwords) -> dict:

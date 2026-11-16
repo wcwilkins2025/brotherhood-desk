@@ -164,7 +164,7 @@ function postCard(p, opts = {}) {
     ${p.draft && dismissed.has(p.id) && view !== 'queue' ? `<div class="acts"><a href="${url}" target="skool" rel="noopener">Open post</a><button class="pill on" onclick="dismiss('${p.id}')">Draft dismissed · undo</button></div>`
     : p.draft ? `<div class="draft"><h4>Draft reply · score ${p.score}${isDone ? ' · sent' : ''}</h4><p class="why">${esc(p.reason)}</p>${(p.flags || []).length ? `<p class="why" style="color:var(--warn)">Check before pasting: ${p.flags.map(esc).join(', ')}.</p>` : ''}<textarea id="ta-${p.id}">${esc(p.draft)}</textarea>
       <div class="acts"><button class="pri" onclick="copyDraft('${p.id}')">Copy reply</button><a href="${url}" target="skool" rel="noopener">Open post</a><button class="${isDone ? 'done' : ''}" onclick="markDone('${p.id}')">${isDone ? 'Sent ✓' : 'Mark sent'}</button><button class="pill ${dismissed.has(p.id) ? 'on' : ''}" onclick="dismiss('${p.id}')">${dismissed.has(p.id) ? 'Dismissed · undo' : 'Dismiss'}</button>${p.iReplied && !isDone ? '<span class="why" style="align-self:center">you already replied on Skool</span>' : ''}</div></div>`
-    : `<div class="acts"><a href="${url}" target="skool" rel="noopener">Open post</a></div>`}
+    : `<div class="acts"><a href="${url}" target="skool" rel="noopener">Open post</a>${D.guest ? '' : `<button class="pill ${dismissed.has(p.id) ? 'on' : ''}" onclick="dismiss('${p.id}')">${dismissed.has(p.id) ? 'Dismissed · undo' : 'Dismiss'}</button>`}${!D.guest && p.awaitingMe && !dismissed.has(p.id) ? '<span class="why" style="align-self:center">someone spoke after you</span>' : ''}</div>`}
     ${cm.length && opts.comments !== false ? `<details class="cmts"><summary>${cm.length} comments loaded${p.newComments ? `, ${p.newComments} new` : ''}</summary>${cm.map(c => `<div class="cmt ${c.new ? 'new' : ''}"><b>${esc(c.author)}</b><span>${fmt(c.date)} · ${c.likes} likes</span><div>${esc(c.text)}</div></div>`).join('')}</details>` : ''}
   </article>`;
 }
@@ -196,25 +196,42 @@ function today(m) {
   m.innerHTML = `<div class="tiles"><div class="tile"><div class="v">${D.counts.new}</div><div class="l">new posts, last 24 hours</div></div><div class="tile"><div class="v">${items.filter(p => p.newComments).length}</div><div class="l">posts with new comments</div></div>${D.guest ? '' : `<div class="tile"><div class="v">${D.counts.queue}</div><div class="l">drafts waiting</div></div><div class="tile"><div class="v">${D.counts.myNewComments}</div><div class="l">new comments on my threads</div></div>`}</div>` + listBar(m, 'Last 24 hours');
   wire(m, items, postCard);
 }
-// Reply queue filters. Status: needs a reply (not sent, not dismissed, not already answered on Skool), sent, dismissed, all.
-// Age: hide posts older than N days (0 = any age). Both remembered in this browser.
-let qStatus = ls('qStatus') || 'needs', qDays = ls('qDays') ?? 14;
-let fStatus = ls('fStatus') || 'all', fDays = ls('fDays') ?? 0;   // the same filters on Forums
+// Reply filters, the same on the Reply queue, Forums and My threads. Remembered per view in this browser.
+// Needs a reply: a draft not yet answered, or a thread where someone spoke after Wiley's last word,
+// and not marked sent or dismissed. Sent or replied: marked sent, answered on Skool, or Wiley has the last word.
 const AGE_OPTS = [[3, 'Last 3 days'], [7, 'Last 7 days'], [14, 'Last 14 days'], [30, 'Last 30 days'], [60, 'Last 60 days'], [0, 'Any age']];
-function queueState(p) { return done.has(p.id) ? 'sent' : dismissed.has(p.id) ? 'dismissed' : p.iReplied ? 'replied' : 'needs'; }
+function replyState(p) {
+  if (dismissed.has(p.id)) return 'dismissed';
+  if (done.has(p.id)) return 'sent';
+  if (p.awaitingMe || (p.draft && !p.iReplied)) return 'needs';
+  if (p.iReplied || p.mine) return 'sent';
+  return 'none';
+}
+const FILTERS = { queue: { status: 'needs', days: 14, all: 'All drafts' }, forums: { status: 'all', days: 0, all: 'All posts' }, mine: { status: 'needs', days: 30, all: 'All my threads' } };
+function filterBar(key, list, rerender) {
+  const F = FILTERS[key];
+  const st = D.guest ? 'all' : (ls(key + 'Status') || F.status), days = ls(key + 'Days') ?? F.days;
+  const cutoff = days ? Date.now() - days * 86400000 : 0;
+  const inAge = list.filter(p => !cutoff || new Date(p.ts || p.date) >= cutoff);
+  const keep = (p, s) => s === 'all' || replyState(p) === s;
+  const opts = [['needs', 'Needs a reply'], ['sent', 'Sent or replied'], ['dismissed', 'Dismissed'], ['all', F.all]];
+  const extra = (D.guest ? '' : `<select id="fs">${opts.map(([k, l]) => `<option value="${k}" ${st === k ? 'selected' : ''}>${l} (${inAge.filter(p => keep(p, k)).length})</option>`).join('')}</select>`)
+    + `<select id="fd">${AGE_OPTS.map(([v, l]) => `<option value="${v}" ${+days === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  return {
+    extra, items: inAge.filter(p => keep(p, st)),
+    bind: m => {
+      const fs = m.querySelector('#fs'), fd = m.querySelector('#fd');
+      if (fs) fs.onchange = e => { ls(key + 'Status', e.target.value); rerender(); };
+      if (fd) fd.onchange = e => { ls(key + 'Days', +e.target.value); rerender(); };
+    },
+  };
+}
 function queue(m) {
-  const all = D.posts.filter(p => p.draft);
-  const cutoff = qDays ? Date.now() - qDays * 86400000 : 0;
-  const inAge = all.filter(p => !cutoff || new Date(p.ts || p.date) >= cutoff);
-  const count = s => inAge.filter(p => s === 'all' || queueState(p) === s || (s === 'sent' && queueState(p) === 'replied')).length;
-  const opts = [['needs', 'Needs a reply'], ['sent', 'Sent or replied'], ['dismissed', 'Dismissed'], ['all', 'All drafts']];
-  const extra = `<select id="qs">${opts.map(([k, l]) => `<option value="${k}" ${qStatus === k ? 'selected' : ''}>${l} (${count(k)})</option>`).join('')}</select>
-    <select id="qd">${[[3, 'Last 3 days'], [7, 'Last 7 days'], [14, 'Last 14 days'], [30, 'Last 30 days'], [60, 'Last 60 days'], [0, 'Any age']].map(([v, l]) => `<option value="${v}" ${+qDays === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
-  m.innerHTML = listBar(m, 'Reply queue', extra);
-  m.querySelector('#qs').onchange = e => { qStatus = e.target.value; ls('qStatus', qStatus); queue(m); };
-  m.querySelector('#qd').onchange = e => { qDays = +e.target.value; ls('qDays', qDays); queue(m); };
+  const fb = filterBar('queue', D.posts.filter(p => p.draft), () => queue(m));
+  m.innerHTML = listBar(m, 'Reply queue', fb.extra);
+  fb.bind(m);
   sortK = 'score';
-  wire(m, inAge.filter(p => qStatus === 'all' || queueState(p) === qStatus || (qStatus === 'sent' && queueState(p) === 'replied')), postCard);
+  wire(m, fb.items, postCard);
 }
 function search(m) {
   m.innerHTML = listBar(m, 'Search all posts');
@@ -222,28 +239,21 @@ function search(m) {
   const qi = m.querySelector('#q'); if (qi) qi.focus();
 }
 function mine(m) {
-  m.innerHTML = listBar(m, 'My threads');
-  wire(m, D.posts.filter(p => p.mine), postCard);
+  const fb = filterBar('mine', D.posts.filter(p => p.mine), () => mine(m));
+  m.innerHTML = listBar(m, 'My threads', fb.extra);
+  fb.bind(m);
+  wire(m, fb.items, postCard);
 }
 function forums(m) {
   const counts = {}, fresh = {}; D.posts.forEach(p => { counts[p.f] = (counts[p.f] || 0) + 1; if (p.isNew || p.newComments) fresh[p.f] = (fresh[p.f] || 0) + 1; });
   const fl = D.forums.filter(f => counts[f.code]);
   if (!forumSel) forumSel = fl[0].code;
-  // same status and age filters as the Reply queue; "All posts" also shows posts with no draft
-  const cutoff = fDays ? Date.now() - fDays * 86400000 : 0;
-  const inAge = D.posts.filter(p => p.f === forumSel && (!cutoff || new Date(p.ts || p.date) >= cutoff));
-  const keep = (p, s) => s === 'all' || (p.draft && (queueState(p) === s || (s === 'sent' && queueState(p) === 'replied')));
-  const opts = [['all', 'All posts'], ['needs', 'Needs a reply'], ['sent', 'Sent or replied'], ['dismissed', 'Dismissed']];
-  const extra = D.guest ? `<select id="fd">${AGE_OPTS.map(([v, l]) => `<option value="${v}" ${+fDays === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`
-    : `<select id="fs">${opts.map(([k, l]) => `<option value="${k}" ${fStatus === k ? 'selected' : ''}>${l} (${inAge.filter(p => keep(p, k)).length})</option>`).join('')}</select>
-    <select id="fd">${AGE_OPTS.map(([v, l]) => `<option value="${v}" ${+fDays === v ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
-  m.innerHTML = `<div class="row"><div class="rail">${fl.map(f => `<button data-f="${f.code}" class="${forumSel === f.code ? 'on' : ''}">${esc(f.name)}<span>${fresh[f.code] ? `<b class="nw">${fresh[f.code]} new</b> · ` : ''}${counts[f.code]}</span></button>`).join('')}</div><div id="pane">${listBar(m, (fl.find(f => f.code === forumSel) || {}).name || '', extra)}</div></div>`;
+  const fb = filterBar('forums', D.posts.filter(p => p.f === forumSel), () => forums(m));
+  m.innerHTML = `<div class="row"><div class="rail">${fl.map(f => `<button data-f="${f.code}" class="${forumSel === f.code ? 'on' : ''}">${esc(f.name)}<span>${fresh[f.code] ? `<b class="nw">${fresh[f.code]} new</b> · ` : ''}${counts[f.code]}</span></button>`).join('')}</div><div id="pane">${listBar(m, (fl.find(f => f.code === forumSel) || {}).name || '', fb.extra)}</div></div>`;
   m.querySelectorAll('.rail button').forEach(b => b.onclick = () => { forumSel = b.dataset.f; ls('forum', forumSel); forums(m); });
-  const fs = m.querySelector('#fs'), fd = m.querySelector('#fd');
-  if (fs) fs.onchange = e => { fStatus = e.target.value; ls('fStatus', fStatus); forums(m); };
-  if (fd) fd.onchange = e => { fDays = +e.target.value; ls('fDays', fDays); forums(m); };
+  fb.bind(m);
   const f = fl.find(x => x.code === forumSel) || {};
-  wire(m, inAge.filter(p => keep(p, D.guest ? 'all' : fStatus)), postCard);
+  wire(m, fb.items, postCard);
   const pane = m.querySelector('#pane h2'); if (pane && f.desc) pane.insertAdjacentHTML('afterend', `<p class="why">${esc(f.desc)}</p>`);
 }
 const spark = w => `<span class="spark">${w.map(v => `<i style="height:${Math.max(1, v / Math.max(1, ...w) * 18)}px"></i>`).join('')}</span>`;

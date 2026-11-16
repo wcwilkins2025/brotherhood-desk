@@ -83,12 +83,15 @@ for pid, p in posts.items():
     # Wiley already answered on Skool: his latest comment is newer than anything anyone else said after it
     my_last = max((c.get("createdAt") or "" for c in cl if c.get("author") == ME), default="")
     i_replied = bool(my_last) and not any((c.get("createdAt") or "") > my_last for c in cl if c.get("author") != ME)
+    # a thread Wiley is in where someone else spoke after his last word (his last comment, or his post if he started it)
+    my_mark = max(my_last, (p.get("createdAt") or "") if p.get("author") == ME else "")
+    awaiting_me = bool(my_mark) and any((c.get("createdAt") or "") > my_mark for c in cl if c.get("author") != ME)
     out_posts.append({
         "id": pid, "slug": p.get("slug"), "title": p.get("title", ""), "author": p.get("author", ""), "userId": p.get("userId"),
         "role": p.get("role"), "date": p.get("createdAt", "")[:10], "ts": p.get("createdAt"), "comments": p.get("comments", 0),
         "likes": p.get("upvotes", 0), "pinned": p.get("pinned", 0), "f": f, "t": t,
         "text": clean(p.get("content"))[:2500], "lastCommentAt": p.get("lastCommentAt"),
-        "isNew": bool(created and created >= new_since), "mine": mine, "iReplied": i_replied, "newComments": len(new_c),
+        "isNew": bool(created and created >= new_since), "mine": mine, "iReplied": i_replied, "awaitingMe": awaiting_me, "newComments": len(new_c),
         "commentList": [{"author": c.get("author"), "text": clean(c.get("content"))[:800], "date": (c.get("createdAt") or "")[:10], "likes": c.get("upvotes", 0), "new": c in new_c} for c in cl[-40:]],
         "score": d.get("score", 0), "reason": d.get("reason", ""), "draft": d.get("draft", ""), "kind": d.get("kind", ""), "flags": d.get("flags", []),
     })
